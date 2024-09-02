@@ -1,0 +1,482 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+
+$start_time = time();
+$yes_print = 0;
+/*    
+/usr/local/php/bin/php /home/server/SERVER_SCRIPT/BUYFINE/cache/search_sale_list.html &
+*/
+
+$is_need_2_depth = 1;
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+
+$u_en_s_word = urlencode("特惠");
+
+$tmall_img_join_tb = "";
+$tmall_img_join_and = "";
+if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+{
+	$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+	$tmall_img_join_and = "AND A.g_uid=GIT.g_uid";
+}
+
+$arr_sale_list_g_uid = array();
+$arr_sale_list_bf_not_in_g_uid = array();
+$arr_sale_c1_list_g_uid = array();
+$arr_sale_c1_list_bf_not_in_g_uid = array();
+$arr_c1_list_g_uid = array();
+$arr_c1_list_bf_not_in_g_uid = array();
+$arr_d_parent_c_code = array('1000','1196','1167','1119','1319');
+$get_num = 300;
+$is_string = 1;
+
+$arr_query_type = array();
+$arr_query_type['0'] = 'in';
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+$not_in_site_code = "";
+$and_in_site_code = "";
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	$not_in_site_code = "AND G.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+	$and_in_site_code = "AND G.site_code IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+	$arr_query_type['1'] = 'not_in';
+}
+
+foreach($arr_query_type AS $q_type)
+{
+	if($q_type == 'not_in')
+	{
+		$and_site_str = $and_in_site_code;
+		$var_name = "arr_sale_list_bf_not_in_g_uid";
+	}
+	else
+	{
+		$and_site_str = $not_in_site_code;
+		$var_name = "arr_sale_list_g_uid";
+	}
+	$query = "
+		SELECT
+			G.g_uid
+		FROM
+			{$goods_db}.goods G
+		WHERE G.now_is_sale=1
+		AND G.isAvailable=2
+		AND G.isSoldout=0
+		{$and_site_str}
+		ORDER BY G.g_uid DESC LIMIT 0, {$get_num}
+	";
+	if($yes_print > 0)
+	{
+		echo $query."\r\n";
+	}
+	$result = dbQuery($query, $dbconn);
+	$i = 1;
+	$arr_temp = array();
+	while($row=mysql_fetch_assoc($result))
+	{
+		if($is_string > 0)
+		{
+			$arr_temp[$i] = "'".$row['g_uid']."'";
+		}
+		else
+		{
+			$arr_temp[$i] = $row['g_uid'];
+		}
+		$i++;
+	}
+	$$var_name = $arr_temp;
+	unset($arr_temp);
+}
+dbClose($dbconn);
+sleep(1);
+if($yes_print > 0)
+{
+	/*
+echo "arr_sale_list_g_uid=";
+	print_r($arr_sale_list_g_uid);
+	echo "arr_sale_list_bf_not_in_g_uid=";
+	print_r($arr_sale_list_bf_not_in_g_uid);
+*/
+}
+
+foreach($arr_query_type AS $q_type)
+{
+	if($q_type == 'not_in')
+	{
+		$and_site_str = $and_in_site_code;
+		$var_name_1 = "arr_sale_c1_list_bf_not_in_g_uid";
+		$var_name_2 = "arr_c1_list_bf_not_in_g_uid";
+	}
+	else
+	{
+		$and_site_str = $not_in_site_code;
+		$var_name_1 = "arr_sale_c1_list_g_uid";
+		$var_name_2 = "arr_c1_list_g_uid";
+	}
+	$dbconn = dbSelect($goods_db,dbConn($goods_host));
+	$arr_temp_1 = array();
+	$arr_temp_2 = array();
+	foreach($arr_d_parent_c_code AS $d_parent_c_value)
+	{
+		$query = "
+			SELECT
+				G.g_uid
+			FROM
+				{$goods_db}.goods G
+			WHERE G.now_is_sale=1
+			AND G.isAvailable=2
+			AND G.isSoldout=0
+			AND G.sl_uid=2
+			AND G.d_parent_c_value={$d_parent_c_value}
+			{$and_site_str}
+			ORDER BY G.g_uid DESC LIMIT 0, {$get_num}
+		";
+		if($yes_print > 0)
+		{
+			echo $query."\r\n";
+		}
+		$result = dbQuery($query, $dbconn);
+		$i = 1;
+		
+		while($row=mysql_fetch_assoc($result))
+		{
+			if($is_string > 0)
+			{
+				$arr_temp_1[$d_parent_c_value][$i] = "'".$row['g_uid']."'";
+			}
+			else
+			{
+				$arr_temp_1[$d_parent_c_value][$i] = $row['g_uid'];
+			}
+			$i++;
+		}
+		
+		$query = "
+			SELECT
+				G.g_uid
+			FROM
+				{$goods_db}.goods G
+			WHERE G.isAvailable=2
+			AND G.isSoldout=0
+			AND G.sl_uid=2
+			AND G.d_parent_c_value={$d_parent_c_value}
+			{$and_site_str}
+			ORDER BY G.g_uid DESC LIMIT 0, {$get_num}
+		";
+		if($yes_print > 0)
+		{
+			echo $query."\r\n";
+		}
+		$result = dbQuery($query, $dbconn);
+		$i = 1;
+		while($row=mysql_fetch_assoc($result))
+		{
+			if($is_string > 0)
+			{
+				$arr_temp_2[$d_parent_c_value][$i] = "'".$row['g_uid']."'";
+			}
+			else
+			{
+				$arr_temp_2[$d_parent_c_value][$i] = $row['g_uid'];
+			}
+			$i++;
+		}
+	}
+	dbClose($dbconn);
+	$$var_name_1 = $arr_temp_1;
+	unset($arr_temp_1);
+	$$var_name_2 = $arr_temp_2;
+	unset($arr_temp_2);
+	sleep(1);
+}
+if($yes_print > 0)
+{
+	/*
+echo "arr_sale_c1_list_g_uid=";
+	print_r($arr_sale_c1_list_g_uid);
+	echo "arr_sale_c1_list_bf_not_in_g_uid=";
+	print_r($arr_sale_c1_list_bf_not_in_g_uid);
+	echo "arr_c1_list_g_uid=";
+	print_r($arr_c1_list_g_uid);
+	echo "arr_c1_list_bf_not_in_g_uid=";
+	print_r($arr_c1_list_bf_not_in_g_uid);
+*/
+}
+
+$arr_c2_num = array();
+if($is_need_2_depth > 0)
+{
+	$dbconn = dbSelect($goods_db,dbConn($goods_host));
+	$query = "
+		SELECT parent_c_code, c2_g_num 
+		FROM  {$goods_db}.goods_category
+		WHERE parent_c_code IN (".implode(",",$arr_d_parent_c_code).")
+		AND is_view =1
+		AND d_num =2
+		ORDER BY parent_c_code, c2_g_num ASC
+	";
+	$result = dbQuery($query, $dbconn);
+	dbClose($dbconn);
+	while($row=mysql_fetch_assoc($result))
+	{
+		$arr_c2_num[$row['parent_c_code']][] = $row['c2_g_num'];
+	}
+}
+
+
+if(count($arr_c1_list_g_uid)>0)
+{
+	$file_include = "<?php\n\$ARR_CA1_PAGE_G_UID = array();\n";
+	foreach($arr_d_parent_c_code AS $d_parent_c_value)
+	{
+		$file_include .= "\$ARR_CA1_PAGE_G_UID['{$d_parent_c_value}'] = array(".implode(",",$arr_c1_list_g_uid[$d_parent_c_value]).");\n";
+		
+	}
+	if(count($arr_c1_list_bf_not_in_g_uid) > 0)
+	{
+		$file_include .= "\$ARR_CA1_BF_NOT_IN_G_UID = array();\n";
+		foreach($arr_d_parent_c_code AS $d_parent_c_value)
+		{
+			if(count($arr_c1_list_bf_not_in_g_uid[$d_parent_c_value]) > 0)
+			{
+				$file_include .= "\$ARR_CA1_BF_NOT_IN_G_UID['{$d_parent_c_value}'] = array(".implode(",",$arr_c1_list_bf_not_in_g_uid[$d_parent_c_value]).");\n";
+			}
+		}
+	}
+	
+	$file_include = $file_include."\n?>";
+	$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_c1_g_uid.inc";
+	write_file($file_loc,$file_include);
+	unset($file_include);
+	chown($file_loc, "daemon");
+	chgrp($file_loc, "daemon");
+	chmod($file_loc, 0775);
+	unset($file_include);
+}
+unset($arr_c1_list_g_uid);
+unset($arr_c1_list_bf_not_in_g_uid);
+
+if(count($arr_sale_list_g_uid)>0 && count($arr_sale_c1_list_g_uid)>0)
+{
+	$file_include = "<?php\n\$ARR_SALE_LIST_G_UID = array(".implode(",",$arr_sale_list_g_uid).");\n";
+	if(count($arr_sale_list_bf_not_in_g_uid) > 0)
+	{
+		$file_include .= "\$ARR_SALE_LIST_BF_NOT_IN_G_UID = array(".implode(",",$arr_sale_list_bf_not_in_g_uid).");\n";
+	}
+	$file_include .= "\$ARR_SALE_C1_LIST_G_UID = array();\n";
+	foreach($arr_d_parent_c_code AS $d_parent_c_value)
+	{
+		$file_include .= "\$ARR_SALE_C1_LIST_G_UID['{$d_parent_c_value}'] = array(".implode(",",$arr_sale_c1_list_g_uid[$d_parent_c_value]).");\n";
+	}
+	if(count($arr_sale_c1_list_bf_not_in_g_uid) > 0)
+	{
+		$file_include .= "\$ARR_SALE_C1_LIST_BF_NOT_IN_G_UID = array();\n";
+		foreach($arr_d_parent_c_code AS $d_parent_c_value)
+		{
+			if(count($arr_sale_c1_list_bf_not_in_g_uid[$d_parent_c_value]) > 0)
+			{
+				$file_include .= "\$ARR_SALE_C1_LIST_BF_NOT_IN_G_UID['{$d_parent_c_value}'] = array(".implode(",",$arr_sale_c1_list_bf_not_in_g_uid[$d_parent_c_value]).");\n";
+			}
+		}
+	}
+	
+	$file_include = $file_include."\n?>";
+	$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_search_sale_g_uid.inc";
+	write_file($file_loc,$file_include);
+	unset($file_include);
+	chown($file_loc, "daemon");
+	chgrp($file_loc, "daemon");
+	chmod($file_loc, 0775);
+	unset($file_include);
+	if($IS_RSYNC_SEARCH_SALE_LIST_CACHE_IP > 0)//$IS_RSYNC_SEARCH_SALE_LIST_CACHE_IP assign COMM_FUNC.inc
+	{
+		func_rsync_exec($ARR_RSYNC_SEARCH_SALE_LIST_CACHE_IP, $ARR_RSYNC_SEARCH_SALE_LIST_CACHE_SOURCE, $ARR_RSYNC_SEARCH_SALE_LIST_CACHE_DESTINATION);
+	}
+}
+unset($arr_sale_list_g_uid);
+unset($arr_sale_list_bf_not_in_g_uid);
+unset($arr_sale_c1_list_g_uid);
+unset($arr_sale_c1_list_bf_not_in_g_uid);
+
+if($is_need_2_depth > 0)
+{
+	$arr_c2_list_g_uid = array();
+	$arr_c2_list_bf_not_in_g_uid = array();
+	$arr_sale_c2_list_g_uid = array();
+	$arr_sale_c2_list_bf_not_in_g_uid = array();
+	foreach($arr_query_type AS $q_type)
+	{
+		if($q_type == 'not_in')
+		{
+			$and_site_str = $and_in_site_code;
+			$var_name_1 = "arr_sale_c2_list_bf_not_in_g_uid";
+			$var_name_2 = "arr_c2_list_bf_not_in_g_uid";
+		}
+		else
+		{
+			$and_site_str = $not_in_site_code;
+			$var_name_1 = "arr_sale_c2_list_g_uid";
+			$var_name_2 = "arr_c2_list_g_uid";
+		}
+		
+		$arr_temp_1 = array();
+		$arr_temp_2 = array();
+		foreach($arr_d_parent_c_code AS $d_parent_c_value)
+		{
+			if(count($arr_c2_num[$d_parent_c_value]) > 0)
+			{
+				$dbconn = dbSelect($goods_db,dbConn($goods_host));
+				foreach($arr_c2_num[$d_parent_c_value] AS $c2_g_num)
+				{
+					$c2_str = $d_parent_c_value."_".$c2_g_num;
+					
+					$query = "
+						SELECT
+							G.g_uid
+						FROM
+							{$goods_db}.goods G
+						WHERE G.now_is_sale=1
+						AND G.isAvailable=2
+						AND G.isSoldout=0
+						AND G.sl_uid=2
+						AND G.d_parent_c_value={$d_parent_c_value}
+						AND G.c2_g_num={$c2_g_num}
+						{$and_site_str}
+						ORDER BY G.g_uid DESC LIMIT 0, {$get_num}
+					";
+					if($yes_print > 0)
+					{
+						echo $query."\r\n";
+					}
+					$result = dbQuery($query, $dbconn);
+					$i = 1;
+					while($row=mysql_fetch_assoc($result))
+					{
+						if($is_string > 0)
+						{
+							$arr_temp_1[$c2_str][$i] = "'".$row['g_uid']."'";;
+						}
+						else
+						{
+							$arr_temp_1[$c2_str][$i] = $row['g_uid'];
+						}
+						$i++;
+					}
+					
+					$query = "
+						SELECT
+							G.g_uid
+						FROM
+							{$goods_db}.goods G
+						WHERE G.isAvailable=2
+						AND G.isSoldout=0
+						AND G.sl_uid=2
+						AND G.d_parent_c_value={$d_parent_c_value}
+						AND G.c2_g_num={$c2_g_num}
+						{$and_site_str}
+						ORDER BY G.g_uid DESC LIMIT 0, {$get_num}
+					";
+					if($yes_print > 0)
+					{
+						echo $query."\r\n";
+					}
+					$result = dbQuery($query, $dbconn);
+					$i = 1;
+					while($row=mysql_fetch_assoc($result))
+					{
+						if($is_string > 0)
+						{
+							$arr_temp_2[$c2_str][$i] = "'".$row['g_uid']."'";;
+						}
+						else
+						{
+							$arr_temp_2[$c2_str][$i] = $row['g_uid'];
+						}
+						$i++;
+					}
+				}
+				dbClose($dbconn);
+				usleep(200000);//wait for 0.2 seconds
+			}
+		}
+		$$var_name_1 = $arr_temp_1;
+		unset($arr_temp_1);
+		$$var_name_2 = $arr_temp_2;
+		unset($arr_temp_2);
+	}
+	
+	$is_need_rsync = 0;
+	if(count($arr_sale_c2_list_g_uid)>0)
+	{
+		$file_include = "<?php\n\$ARR_SALE_C2_LIST_G_UID = array();\n";
+		foreach($arr_sale_c2_list_g_uid AS $c2_str=>$arr_g_uid)
+		{
+			$file_include .= "\$ARR_SALE_C2_LIST_G_UID['{$c2_str}'] = array(".implode(",",$arr_g_uid).");\n";
+		}
+		if(count($arr_sale_c2_list_bf_not_in_g_uid) > 0)
+		{
+			$file_include .= "\$ARR_SALE_C2_LIST_BF_NOT_IN_G_UID = array();\n";
+			foreach($arr_sale_c2_list_bf_not_in_g_uid AS $c2_str=>$arr_g_uid)
+			{
+				$file_include .= "\$ARR_SALE_C2_LIST_BF_NOT_IN_G_UID['{$c2_str}'] = array(".implode(",",$arr_g_uid).");\n";
+			}
+		}
+		$file_include = $file_include."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_search_sale_c2_g_uid.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+		unset($file_include);
+		$is_need_rsync = 1;
+	}
+	unset($arr_sale_c2_list_g_uid);
+	unset($arr_sale_c2_list_bf_not_in_g_uid);
+	if(count($arr_c2_list_g_uid)>0)
+	{
+		$file_include = "<?php\n\$ARR_CA2_PAGE_G_UID = array();\n";
+		foreach($arr_c2_list_g_uid AS $c2_str=>$arr_g_uid)
+		{
+			$file_include .= "\$ARR_CA2_PAGE_G_UID['{$c2_str}'] = array(".implode(",",$arr_g_uid).");\n";
+		}
+		if(count($arr_c2_list_bf_not_in_g_uid) > 0)
+		{
+			$file_include .= "\$ARR_CA2_PAGE_BF_NOT_IN_G_UID = array();\n";
+			foreach($arr_c2_list_bf_not_in_g_uid AS $c2_str=>$arr_g_uid)
+			{
+				$file_include .= "\$ARR_CA2_PAGE_BF_NOT_IN_G_UID['{$c2_str}'] = array(".implode(",",$arr_g_uid).");\n";
+			}
+		}
+		$file_include = $file_include."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_c2_g_uid.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+		unset($file_include);
+		$is_need_rsync = 1;
+	}
+	unset($arr_c2_list_g_uid);
+	unset($arr_c2_list_bf_not_in_g_uid);
+	
+	if($is_need_rsync>0 && $IS_RSYNC_CA_2_LIST_CACHE_IP>0)//$IS_RSYNC_CA_2_LIST_CACHE_IP assign COMM_FUNC.inc
+	{
+		func_rsync_exec($ARR_RSYNC_CA_2_LIST_CACHE_IP, $ARR_RSYNC_CA_2_LIST_CACHE_SOURCE, $ARR_RSYNC_CA_2_LIST_CACHE_DESTINATION);
+	}
+}
+
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("Search cache list/is_need_2_depth={$is_need_2_depth} - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>

@@ -1,0 +1,642 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+
+include "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_en_navi.inc";
+$ARR_EN_CA_1 = $ARR_CA_1;
+$ARR_EN_CA_2 = $ARR_CA_2;
+$ARR_EN_CA_3 = $ARR_CA_3;
+$ARR_EN_CA_4 = $ARR_CA_4;
+unset($ARR_CA_1);
+unset($ARR_CA_2);
+unset($ARR_CA_3);
+unset($ARR_CA_4);
+include "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_navi.inc";
+include "/home/html/BUYFINE/www_v3.buyfine.net/search/func_utf8_index_searcher.inc";
+
+/*   
+/usr/local/php/bin/php /home/server/SERVER_SCRIPT/BUYFINE/cache/search_sale_ca_br_list_2depth.html &
+*/
+$is_yes_print = 0;
+$start_time = time();
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+$u_en_s_word = urlencode("特惠");
+
+$ca_s_type = 2;
+$arr_ca_count = array();
+$arr_br_count = array();
+
+$tmall_img_join_tb = "";
+$tmall_img_join_and = "";
+if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+{
+	$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+	$tmall_img_join_and = "AND A.g_uid=GIT.g_uid";
+}
+
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+$not_in_site_code = "";
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	$not_in_site_code = "AND A.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+	$not_in_site_2_code = "AND G.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+}
+
+$query_t = "SELECT c_value FROM {$goods_db}.goods_category WHERE is_view=1 AND d_num IN (1) ORDER BY c_value ASC";
+//$query_t = "SELECT c_value FROM {$goods_db}.goods_category WHERE c_value IN ('1000','1119') AND is_view=1 AND d_num IN (1) ORDER BY c_value ASC";
+if($is_yes_print > 0)
+{
+	echo "{$query_t}\n";
+}
+$result_t = dbQuery($query_t,$dbconn);
+$arr_c_value_sub = array();
+$arr_cache_search_c_name = array();
+$is_cache_search_c_name = 0;
+while($row_t=mysql_fetch_assoc($result_t))
+{
+	$arr_c_value = explode("_", $row_t['c_value']);
+	$c1 = $arr_c_value['0'];
+	$dt_count = count($arr_c_value);
+	
+	$ca_join_table = "";
+	$ca_join_and = "";
+	$ca_and_str = "";
+	$ca_and_str = func_ca_query_and_str($row_t['c_value']);
+	$query_ca = "
+		SELECT 
+			COUNT(DISTINCT A.g_uid) AS each_ca_count, CA.c_value, CA.c_name 
+		FROM 
+			{$goods_db}.goods A, {$goods_db}.goods_category CA{$tmall_img_join_tb}{$ca_join_table}
+		WHERE A.c_code=CA.c_code
+		{$tmall_img_join_and}
+		{$ca_join_and}
+		AND A.now_is_sale=1
+		AND A.isAvailable=2
+		AND A.isSoldout=0
+		{$ca_and_str}
+		{$not_in_site_code}
+		GROUP BY CA.c_code ORDER BY CA.g_num ASC, CA.o_num ASC
+	";
+	if($is_yes_print > 0)
+	{
+		echo "{$query_ca}\n";
+	}
+	$result_ca = dbQuery($query_ca, $dbconn);
+	while($row_ca=mysql_fetch_assoc($result_ca))
+	{
+		$each_ca_count = $row_ca['each_ca_count'];
+		
+		if($is_cache_search_c_name > 0)
+		{
+			$arr_s_c_n = func_ca_view($row_ca['c_value']);
+			$search_category_name = implode("",$arr_s_c_n);
+			$search_str = str_replace("[br]","<br>",$search_category_name);
+			$temp_s_word = $search_str;
+			$temp_s_word = @trim(strtolower($temp_s_word));
+			$arr_temp_s_word2 = explode(" ",$temp_s_word);
+			$count_arr_temp_s_word2 = count($arr_temp_s_word2);
+			if($count_arr_temp_s_word2 == 1)
+			{
+				$arr_temp_s_word = explode("-",$temp_s_word);
+				$count_arr_temp_s_word = count($arr_temp_s_word);
+				if($count_arr_temp_s_word == 2)
+				{
+					$temp_s_word_num_check = is_numeric($arr_temp_s_word['1']);
+					if($temp_s_word_num_check)
+					{
+						$temp_s_word = str_replace("bi-","",$temp_s_word);
+					}
+				}
+			}
+			$temp_s_word = auto_s_word_change($temp_s_word);
+			$arr_return_s_word = return_arr_s_word($temp_s_word);
+			$en_h_s_word = $arr_return_s_word['en_h_s_word'];
+			$h_s_word = $arr_return_s_word['h_s_word'];
+			$GB_ARR_S_WORD = $arr_return_s_word['GB_ARR_S_WORD'];
+			$t_word_count = $arr_return_s_word['t_word_count'];
+			$GB_T_WORD_COUNT = $arr_return_s_word['GB_T_WORD_COUNT'];
+			$arr_new_s_word = $arr_return_s_word['arr_new_s_word'];
+			$s_log_str = $arr_return_s_word['s_log_str'];
+			$s_w_count_1 = $arr_return_s_word['s_w_count_1'];
+			unset($arr_return_s_word);
+			$GB_S_W_COUNT_2 = 10;
+			$db_name = $search_goods_db;
+			$join_uid = "g_uid";
+			$GB_DB = $db_name;
+			$GB_JOIN_UID = $join_uid;
+			$arr_q_value = return_loop_select_query($GB_ARR_S_WORD);
+			if(count($arr_q_value['sword']) > 0)
+			{
+				$is_s_word = 0;
+				$arr_t_overlap_s_word = array();
+				foreach($arr_q_value['sword'] AS $sword)
+				{
+					$s_len = mb_strlen($sword, 'UTF-8');
+					if($s_len > 1)
+					{
+						$is_s_word = 1;
+						$arr_cache_search_c_name[$sword] += $each_ca_count;
+						$arr_t_overlap_s_word[] = $sword;
+					}
+				}
+				if($is_s_word > 0)
+				{
+					foreach($arr_s_c_n AS $each_c_name)
+					{
+						$temp_s_word = auto_s_word_change($each_c_name);
+						$arr_return_s_word = return_arr_s_word($temp_s_word);
+						if(count($arr_return_s_word['arr_new_s_word']) > 0)
+						{
+							$loop_each_c_name = implode(" ",$arr_return_s_word['arr_new_s_word']);
+							if(count($arr_t_overlap_s_word) > 0)
+							{
+								if(in_array($loop_each_c_name, $arr_t_overlap_s_word))
+								{
+									continue;
+								}
+							}
+							$arr_cache_search_c_name[$loop_each_c_name] += $each_ca_count;
+						}
+						unset($arr_return_s_word);
+					}
+				}
+				unset($arr_t_overlap_s_word);
+			}
+			unset($arr_s_c_n);
+			unset($arr_q_value);
+		}
+		
+		$c_value = $row_ca['c_value'];
+		$arr_c_value = explode("_", $c_value);
+		$c_value_1 = $arr_c_value['0'];
+		$c_value_2 = $arr_c_value['1'];
+		$ca_str_2 = "";
+		if($c_value_2)
+		{
+			$ca_str_2 = $c_value_1."_".$c_value_2;
+		}
+		$c_value_3 = $arr_c_value['2'];
+		$ca_str_3 = "";
+		if($c_value_3)
+		{
+			$ca_str_3 = $c_value_1."_".$c_value_2."_".$c_value_3;
+		}
+		$c_value_4 = $arr_c_value['3'];
+		$ca_str_4 = "";
+		if($c_value_4)
+		{
+			$ca_str_4 = $c_value_1."_".$c_value_2."_".$c_value_3."_".$c_value_4;
+		}
+		unset($arr_c_value);
+				
+		//if(!$arr_ca_count[$c_value_1]['t_num']) $arr_ca_count[$c_value_1]['t_num']=0;
+		//$arr_ca_count[$c_value_1]['t_num'] = $arr_ca_count[$c_value_1]['t_num']+$each_ca_count;
+		$arr_c_name = func_ca_view($c_value);
+		//$arr_ca_count[$c_value_1]['c_name'] = $arr_c_name['0'];
+		$arr_c_en_name = func_ca_view($c_value, 7);
+		//$arr_ca_count[$c_value_1]['c_name_en'] = $arr_c_en_name['0'];
+		//if(!in_array($c_value_1,$arr_c_value_sub['1depth'])) $arr_c_value_sub['1depth'][]=$c_value_1;
+		//$arr_c_value_sub[]=$c_value_1;
+		$arr_c_value_sub[]=$c_value;
+		if($c_value_2)
+		{
+			$arr_ca_count['1depth'][$c_value_1]['c_name'] = $arr_c_name['0'];
+			$arr_ca_count['1depth'][$c_value_1]['c_name_en'] = $arr_c_en_name['0'];
+			if(!$arr_ca_count['1depth'][$c_value_1]['arr_sub'][$ca_str_2]['t_num']) $arr_ca_count['1depth'][$c_value_1]['arr_sub'][$ca_str_2]['t_num']=0;
+			$arr_ca_count['1depth'][$c_value_1]['arr_sub'][$ca_str_2]['t_num'] = $arr_ca_count['1depth'][$c_value_1]['arr_sub'][$ca_str_2]['t_num']+$each_ca_count;
+			$arr_ca_count['1depth'][$c_value_1]['arr_sub'][$ca_str_2]['c_name'] = $arr_c_name['1'];
+			$arr_ca_count['1depth'][$c_value_1]['arr_sub'][$ca_str_2]['c_name_en'] = $arr_c_en_name['1'];
+			//if(!in_array($ca_str_2,$arr_c_value_sub['1depth'])) $arr_c_value_sub['1depth'][]=$ca_str_2;
+			//$arr_c_value_sub[]=$ca_str_2;
+		}
+		if($c_value_3)
+		{
+			$arr_ca_count['2depth'][$ca_str_2]['c_name'] = $arr_c_name['1'];
+			$arr_ca_count['2depth'][$ca_str_2]['c_name_en'] = $arr_c_en_name['1'];
+			if(!$arr_ca_count['2depth'][$ca_str_2]['arr_sub'][$ca_str_3]['t_num']) $arr_ca_count['2depth'][$ca_str_2]['arr_sub'][$ca_str_3]['t_num']=0;
+			$arr_ca_count['2depth'][$ca_str_2]['arr_sub'][$ca_str_3]['t_num'] = $arr_ca_count['2depth'][$ca_str_2]['arr_sub'][$ca_str_3]['t_num']+$each_ca_count;
+			$arr_ca_count['2depth'][$ca_str_2]['arr_sub'][$ca_str_3]['c_name'] = $arr_c_name['2'];
+			$arr_ca_count['2depth'][$ca_str_2]['arr_sub'][$ca_str_3]['c_name_en'] = $arr_c_en_name['2'];
+			//if(!in_array($ca_str_3,$arr_c_value_sub['2depth'])) $arr_c_value_sub['3depth'][]=$ca_str_3;
+			//$arr_c_value_sub[]=$ca_str_3;
+		}
+		if($c_value_4)
+		{
+			$arr_ca_count['3depth'][$ca_str_3]['c_name'] = $arr_c_name['2'];
+			$arr_ca_count['3depth'][$ca_str_3]['c_name_en'] = $arr_c_en_name['2'];
+			if(!$arr_ca_count['3depth'][$ca_str_3]['arr_sub'][$ca_str_4]['t_num']) $arr_ca_count['3depth'][$ca_str_3]['arr_sub'][$ca_str_4]['t_num']=0;
+			$arr_ca_count['3depth'][$ca_str_3]['arr_sub'][$ca_str_4]['t_num'] = $arr_ca_count['3depth'][$ca_str_3]['arr_sub'][$ca_str_4]['t_num']+$each_ca_count;
+			$arr_ca_count['3depth'][$ca_str_3]['arr_sub'][$ca_str_4]['c_name'] = $arr_c_name['3'];
+			$arr_ca_count['3depth'][$ca_str_3]['arr_sub'][$ca_str_4]['c_name_en'] = $arr_c_en_name['3'];
+			
+			$arr_ca_count['4depth'][$ca_str_4]['c_name'] = $arr_c_name['3'];
+			$arr_ca_count['4depth'][$ca_str_4]['c_name_en'] = $arr_c_en_name['3'];
+			//if(!in_array($ca_str_4,$arr_c_value_sub['3depth'])) $arr_c_value_sub['4depth'][]=$ca_str_4;
+			//$arr_c_value_sub[]=$ca_str_4;
+		}
+		unset($arr_c_name);
+		unset($arr_c_en_name);
+	}	
+	
+	//AND B.b_code IN ({$ARR_PREMIER_BRAND_STR})
+	$query_br = "
+		SELECT
+			COUNT(DISTINCT A.g_uid) AS each_br_count, A.c_value, B.b_code, B.b_name, B.b_name_cn
+		FROM
+			{$goods_db}.goods A, {$goods_db}.goods_brand B{$tmall_img_join_tb}{$ca_join_table}
+		WHERE A.b_code=B.b_code
+		{$tmall_img_join_and}
+		{$ca_join_and}
+		AND A.now_is_sale=1
+		AND A.isAvailable=2
+		AND A.isSoldout=0
+		{$ca_and_str}
+		{$not_in_site_code}
+		GROUP BY B.b_code ORDER BY RAND()
+	";
+	if($is_yes_print > 0)
+	{
+		echo "{$query_br}\n";
+	}
+	unset($arr_premier_brand);
+	$result_br = dbQuery($query_br, $dbconn);
+	$br_num_1 = 1;
+	while($row_br=mysql_fetch_assoc($result_br))
+	{
+		$atleast_t_num = 10;
+		if(in_array($row_br['b_code'], $ARR_PREMIER_BRAND))//$ARR_PREMIER_BRAND assign COMM_FUNC.inc
+		{
+			$atleast_t_num = 5;
+		}
+		if($row_br['each_br_count'] < $atleast_t_num)
+		{
+			continue;
+		}
+		
+		$c_value = $row_br['c_value'];
+		$arr_c_value = explode("_", $c_value);
+		$c_value_1 = $arr_c_value['0'];
+		$c_value_2 = $arr_c_value['1'];
+		$ca_str_2 = "";
+		if($c_value_2)
+		{
+			$ca_str_2 = $c_value_1."_".$c_value_2;
+		}
+		$c_value_3 = $arr_c_value['2'];
+		$ca_str_3 = "";
+		if($c_value_3)
+		{
+			$ca_str_3 = $c_value_1."_".$c_value_2."_".$c_value_3;
+		}
+		$c_value_4 = $arr_c_value['3'];
+		$ca_str_4 = "";
+		if($c_value_4)
+		{
+			$ca_str_4 = $c_value_1."_".$c_value_2."_".$c_value_3."_".$c_value_4;
+		}
+		unset($arr_c_value);
+		
+		$b_name = $row_br['b_name'];
+		if($row_br['b_name_cn'])
+		{
+			$b_name = $row_br['b_name_cn']." ".$b_name;
+		}
+		
+		$arr_br_count['1depth'][$c_value_1][$row_br['b_code']]['b_name'] = $b_name;
+		if(!$arr_br_count['1depth'][$c_value_1][$row_br['b_code']]['each_br_count']) $arr_br_count['1depth'][$c_value_1][$row_br['b_code']]['each_br_count']=0;
+		$arr_br_count['1depth'][$c_value_1][$row_br['b_code']]['each_br_count'] = $arr_br_count['1depth'][$c_value_1][$row_br['b_code']]['each_br_count']+$row_br['each_br_count'];
+		if($c_value_2)
+		{
+			$arr_br_count['2depth'][$ca_str_2][$row_br['b_code']]['b_name'] = $b_name;
+			if(!$arr_br_count['2depth'][$ca_str_2][$row_br['b_code']]['each_br_count']) $arr_br_count['2depth'][$ca_str_2][$row_br['b_code']]['each_br_count']=0;
+			$arr_br_count['2depth'][$ca_str_2][$row_br['b_code']]['each_br_count'] = $arr_br_count['2depth'][$ca_str_2][$row_br['b_code']]['each_br_count']+$row_br['each_br_count'];
+		}
+		if($c_value_3)
+		{
+			$arr_br_count['3depth'][$ca_str_3][$row_br['b_code']]['b_name'] = $b_name;
+			if(!$arr_br_count['3depth'][$ca_str_3][$row_br['b_code']]['each_br_count']) $arr_br_count['3depth'][$ca_str_3][$row_br['b_code']]['each_br_count']=0;
+			$arr_br_count['3depth'][$ca_str_3][$row_br['b_code']]['each_br_count'] = $arr_br_count['3depth'][$ca_str_3][$row_br['b_code']]['each_br_count']+$row_br['each_br_count'];
+		}
+		if($c_value_4)
+		{
+			$arr_br_count['4depth'][$ca_str_4][$row_br['b_code']]['b_name'] = $b_name;
+			if(!$arr_br_count['4depth'][$ca_str_4][$row_br['b_code']]['each_br_count']) $arr_br_count['4depth'][$ca_str_4][$row_br['b_code']]['each_br_count']=0;
+			$arr_br_count['4depth'][$ca_str_4][$row_br['b_code']]['each_br_count'] = $arr_br_count['4depth'][$ca_str_4][$row_br['b_code']]['each_br_count']+$row_br['each_br_count'];
+		}
+
+		$br_num_1++;
+	}
+}
+dbClose($dbconn);
+//arsort($arr_ca_count,0);
+//$arr_c_value_sub = array_unique($arr_c_value_sub);
+if($is_yes_print > 0)
+{
+	//echo("arr_ca_count=");print_r($arr_ca_count);
+	//echo("arr_br_count=");print_r($arr_br_count);
+}
+
+//$file_include = "";
+if(count($arr_ca_count) > 0)
+{
+	$file_include = "<?php\n\n\$ARR_SALE_CA_COUNT_CACHE = array();\n";
+	foreach($arr_ca_count AS $depth=>$arr_values)
+	{		
+		foreach($arr_values AS $c_key=>$arr_2_values)
+		{
+			$file_include .= "\$ARR_SALE_CA_COUNT_CACHE['$depth']['$c_key']['c_name'] = '{$arr_2_values['c_name']}';\n\$ARR_SALE_CA_COUNT_CACHE['$depth']['$c_key']['c_name_en'] = '{$arr_2_values['c_name_en']}';\n";
+			if(count($arr_2_values['arr_sub']) > 0)
+			{
+				foreach($arr_2_values['arr_sub'] AS $sub_key=>$arr_sub_values)
+				{
+					$file_include .= "\$ARR_SALE_CA_COUNT_CACHE['$depth']['$c_key']['arr_sub']['$sub_key']['t_num'] = {$arr_sub_values['t_num']};\n\$ARR_SALE_CA_COUNT_CACHE['$depth']['$c_key']['arr_sub']['$sub_key']['c_name'] = '{$arr_sub_values['c_name']}';\n\$ARR_SALE_CA_COUNT_CACHE['$depth']['$c_key']['arr_sub']['$sub_key']['c_name_en'] = '{$arr_sub_values['c_name_en']}';\n";
+				}
+			}
+		}
+	}
+	$file_include = $file_include."\n?>";
+	//echo $file_include;
+	$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/cache/search_sale_ca_2_3_4_ct.inc";
+	write_file($file_loc,$file_include);
+	unset($file_include);
+	chown($file_loc, "daemon");
+	chgrp($file_loc, "daemon");
+	chmod($file_loc, 0775);
+	
+	if($IS_RSYNC_SEARCH_SALE_CA_2_3_4_CT_CACHE_IP > 0)//$IS_RSYNC_SEARCH_SALE_CA_2_3_4_CT_CACHE_IP assign COMM_FUNC.inc
+	{
+		func_rsync_exec($ARR_RSYNC_SEARCH_SALE_CA_2_3_4_CT_CACHE_IP, $ARR_RSYNC_SEARCH_SALE_CA_2_3_4_CT_SOURCE, $ARR_RSYNC_SEARCH_SALE_CA_2_3_4_CT_DESTINATION);
+	}
+}
+unset($arr_ca_count);
+//echo "CA End";
+$arr_new_br_count = array();
+if(count($arr_br_count) > 0)
+{
+	foreach($arr_br_count AS $depth=>$arr_values)
+	{
+		foreach($arr_values AS $c_key=>$arr_2_values)
+		{
+			$br_num_1 = 1; 
+			$arr_overlap_b_code = array();
+			foreach($arr_2_values AS $b_code=>$arr_3_values)
+			{
+				if($br_num_1 == 13)
+				{
+					$arr_new_br_count[$depth][$c_key]['cache_is_br_t15'] = 1;
+					break;
+				}
+				if(in_array($b_code, $ARR_PREMIER_BRAND))//$ARR_PREMIER_BRAND assign COMM_FUNC.inc
+				{
+					$arr_new_br_count[$depth][$c_key][$b_code]['b_name'] = $arr_3_values['b_name'];
+					$arr_new_br_count[$depth][$c_key][$b_code]['each_br_count'] = $arr_3_values['each_br_count'];
+					$arr_overlap_b_code[] = $b_code;
+					$br_num_1++;
+				}
+			}
+			$count_premier_brand = count($arr_new_br_count[$depth][$c_key]);
+			if($count_premier_brand < 12)
+			{
+				$br_num_1 = $count_premier_brand;
+				foreach($arr_2_values AS $b_code=>$arr_3_values)
+				{
+					if($br_num_1 == 13)
+					{
+						$arr_new_br_count[$depth][$c_key]['cache_is_br_t15'] = 1;
+						break;
+					}
+					if(count($arr_overlap_b_code) > 0)
+					{
+						if(in_array($b_code, $arr_overlap_b_code))
+						{
+							continue;
+						}
+					}
+					$arr_new_br_count[$depth][$c_key][$b_code]['b_name'] = $arr_3_values['b_name'];
+					$arr_new_br_count[$depth][$c_key][$b_code]['each_br_count'] = $arr_3_values['each_br_count'];
+					$arr_overlap_b_code[] = $b_code;
+					$br_num_1++;
+				}
+				$count_brand = count($arr_new_br_count[$depth][$c_key]);
+				if($count_brand < 12)
+				{
+					unset($arr_new_br_count[$depth][$c_key]);
+				}
+			}
+			unset($arr_overlap_b_code);
+		}
+	}
+}
+unset($arr_br_count);
+if($is_yes_print > 0)
+{
+	//echo("arr_new_br_count=");print_r($arr_new_br_count);
+}
+if(count($arr_new_br_count) > 0)
+{
+	foreach($arr_new_br_count AS $depth=>$arr_values)
+	{
+		$file_include = "<?php\n\n\$ARR_SALE_BR_COUNT_CACHE = array();\n";
+		foreach($arr_values AS $c_key=>$arr_2_values)
+		{
+			if($arr_2_values['cache_is_br_t15'])
+			{
+				$file_include .= "\$ARR_SALE_BR_COUNT_CACHE['$depth']['$c_key']['cache_is_br_t15'] = 1;\n";
+			}
+			foreach($arr_2_values AS $b_code=>$arr_3_values)
+			{
+				if($b_code=='cache_is_br_t15') continue;
+				$file_include .= "\$ARR_SALE_BR_COUNT_CACHE['$depth']['$c_key']['{$b_code}']['b_name'] = '{$arr_3_values['b_name']}';\n\$ARR_SALE_BR_COUNT_CACHE['$depth']['$c_key']['{$b_code}']['each_br_count'] = '{$arr_3_values['each_br_count']}';\n";
+			}
+		}
+		$file_include = $file_include."\n?>";
+		//echo $file_include;
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/cache/search_sale_br_{$depth}_ct.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+	}
+	if($IS_RSYNC_SEARCH_SALE_BR_2_3_4_CT_CACHE_IP > 0)//$IS_RSYNC_SEARCH_SALE_BR_2_3_4_CT_CACHE_IP assign COMM_FUNC.inc
+	{
+		func_rsync_exec($ARR_RSYNC_SEARCH_SALE_BR_2_3_4_CT_CACHE_IP, $ARR_RSYNC_SEARCH_SALE_BR_2_3_4_CT_SOURCE, $ARR_RSYNC_SEARCH_SALE_BR_2_3_4_CT_DESTINATION);
+	}
+}
+unset($arr_new_br_count);
+
+if($is_yes_print > 1)
+{
+	echo "arr_cache_search_c_name = ";
+	print_r($arr_cache_search_c_name);
+}
+if(count($arr_cache_search_c_name)>0 && $is_cache_search_c_name>0)
+{
+	$cache_search_c_name_num = 9999;
+	foreach($arr_cache_search_c_name AS $temp_str=>$ct_num)
+	{
+		if($ct_num > $SEQ_TB_MINIMUM_NUM)//$SEQ_TB_MINIMUM_NUM assign COMM_FUNC.inc
+		{
+			$search_tb_str = "";
+			$search_join_str = "";
+			$search_and_str = "";
+			$search_sort_str = "";
+			$search_str = str_replace("[br]","<br>",$temp_str);
+			$temp_s_word = $search_str;
+			$temp_s_word = @trim(strtolower($temp_s_word));
+			$arr_temp_s_word2 = explode(" ",$temp_s_word);
+			$count_arr_temp_s_word2 = count($arr_temp_s_word2);
+			if($count_arr_temp_s_word2 == 1)
+			{
+				$arr_temp_s_word = explode("-",$temp_s_word);
+				$count_arr_temp_s_word = count($arr_temp_s_word);
+				if($count_arr_temp_s_word == 2)
+				{
+					$temp_s_word_num_check = is_numeric($arr_temp_s_word['1']);
+					if($temp_s_word_num_check)
+					{
+						$temp_s_word = str_replace("bi-","",$temp_s_word);
+					}
+				}
+			}
+			$temp_s_word = auto_s_word_change($temp_s_word);
+			$arr_return_s_word = return_arr_s_word($temp_s_word);
+			$en_h_s_word = $arr_return_s_word['en_h_s_word'];
+			$h_s_word = $arr_return_s_word['h_s_word'];
+			$GB_ARR_S_WORD = $arr_return_s_word['GB_ARR_S_WORD'];
+			$t_word_count = $arr_return_s_word['t_word_count'];
+			$GB_T_WORD_COUNT = $arr_return_s_word['GB_T_WORD_COUNT'];
+			$arr_new_s_word = $arr_return_s_word['arr_new_s_word'];
+			$s_log_str = $arr_return_s_word['s_log_str'];
+			$s_w_count_1 = $arr_return_s_word['s_w_count_1'];
+			unset($arr_return_s_word);
+			$GB_S_W_COUNT_2 = 10;
+			$db_name = $search_goods_db;
+			$join_uid = "g_uid";
+			$GB_DB = $db_name;
+			$GB_JOIN_UID = $join_uid;
+			$arr_q_value = return_loop_select_query($GB_ARR_S_WORD);
+			$arr_replace_word = $arr_q_value['sword'];
+			if($arr_q_value['tb']) $search_tb_str=", ".$arr_q_value['tb'];
+			else $is_no_group_by = 1;
+			$search_join_str = $arr_q_value['join'];
+			$search_and_str =  $arr_q_value['and'];
+			$search_sort_str = @trim($arr_q_value['sort']);
+			if($arr_q_value['like_and'])
+			{
+				$like_and = @trim($arr_q_value['like_and']);
+				$arr_like_and = explode(" ", $like_and);
+				$like_count = count($arr_like_and);
+				if($like_count > 0)
+				{
+					$last_like_idx = $like_count-1;
+					$arr_new_like_and = array();
+					foreach($arr_like_and AS $like_key=>$like_value)
+					{
+						$arr_tbNvalue = explode("^", $like_value);
+						$like_tb_name = $arr_tbNvalue['0'];
+						$like_str = $arr_tbNvalue['1'];
+						if($like_key == $last_like_idx)
+						{
+							$like_str_len = strlen($like_str);
+							if($like_str_len > 1)
+							{
+								if($like_key=='0')
+								{
+									if($like_str == 1)
+									{
+										$arr_new_like_and[] = "AND ".$like_tb_name."=".$like_str; 
+									}
+									else
+									{
+										$arr_new_like_and[] = "AND ".$like_tb_name."='".$like_str."'"; 
+									}
+								}
+								else
+								{
+									$arr_new_like_and[] = "AND ".$like_tb_name." LIKE '".$like_str."%'"; 
+								}
+							}
+							else
+							{
+								if($like_str == 1)
+								{
+									$arr_new_like_and[] = "AND ".$like_tb_name."=".$like_str; 
+								}
+								else
+								{
+									$arr_new_like_and[] = "AND ".$like_tb_name."='".$like_str."'"; 
+								}
+							}
+						}
+						else
+						{
+							if($like_str == 1)
+							{
+								$arr_new_like_and[] = "AND ".$like_tb_name."=".$like_str; 
+							}
+							else
+							{
+								$arr_new_like_and[] = "AND ".$like_tb_name."='".$like_str."'"; 
+							}
+						}
+					}
+					//$new_like_and = implode(" ", $arr_new_like_and);
+					$search_and_str = implode(" ", $arr_new_like_and);
+					unset($arr_new_like_and);
+				}
+			}		
+			unset($arr_q_value);
+			if($search_and_str)
+			{
+				$search_and_str = str_replace("A.","G.",$search_and_str);
+			}
+			if($search_join_str)
+			{
+				$search_join_str = str_replace("A.","G.",$search_join_str);
+			}
+			$sort_str = "";
+			if($search_sort_str)
+			{
+				$sort_str = $search_sort_str.", GB.b_name ASC";
+			}
+			
+			//$dbconn = dbSelect($goods_db,dbConn($goods_host));
+			$query = "
+				SELECT 
+					G.g_uid
+				FROM 
+					{$goods_db}.goods G, {$goods_db}.goods_brand GB{$search_tb_str}
+				WHERE G.b_code=GB.b_code
+				{$search_join_str}
+				{$search_and_str}
+				AND G.isAvailable=2 
+				AND G.isSoldout=0
+				AND GB.is_active=1
+				{$not_in_site_2_code}
+				ORDER BY {$sort_str}
+				LIMIT 0, 500
+			";
+			if($is_yes_print > 1)
+			{
+				echo "s_word = {$temp_str}\n";
+				echo "{$query}\n";
+			}
+			//echo $query."\n";
+			//dbClose($dbconn);
+			//sleep(1);
+		}
+	}
+}
+unset($arr_cache_search_c_name);
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("Search sale CA and Br 2depth - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>         

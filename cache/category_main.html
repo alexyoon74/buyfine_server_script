@@ -1,0 +1,562 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+include "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_todays_promotion.inc";
+
+$start_time = time();
+
+function func_query_str($site_code, $p_c_code, $max_usd, $date_time, $max_last_time_num, $is_re=0, $view_g_uid_list="")
+{	
+	global $goods_db, $IS_USE_TMALL_FULL_IMG, $ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE, $arr_department_site_code;
+	$arr_query = array();
+	$not_in_c_code = "1089,1090,1091,1092,1093,1096,1097,1746,1772,1773,1774,1775,1776,1767,1741";
+	if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+	{
+		$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+		$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+	}
+	$not_in_site_code = "";
+	if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+	{
+		$not_in_site_code = "AND G.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+	}
+	
+	if($date_time=='0000-00-00 00:00:00' || $view_g_uid_list)
+	{
+		$limt_num = 100;
+		$and_str = "";
+	}
+	else
+	{
+		$arr_date_time = explode(" ",$date_time);
+		$arr_date = explode("-",$arr_date_time['0']);
+		$arr_time = explode(":",$arr_date_time['1']);
+		$year = $arr_date['0'];
+		$month = $arr_date['1'];
+		$date = $arr_date['2'];
+		$hour = $arr_time['0'];
+		$minute = $arr_time['1'];
+		$second = $arr_time['2'];
+		$last_mktime = mktime ($hour, $minute, $second, $month, $date-$max_last_time_num,  $year);
+		$start_and_time = date("Y-m-d H:i:s",$last_mktime);
+		//echo $start_and_time." = ".$date_time."\r\n";
+
+		$limt_num = 1000;
+		//$and_str = "AND (GI.regist_time BETWEEN '{$start_and_time}' AND '{$date_time}')";
+		$and_str = "AND GI.regist_time >= '{$start_and_time}'";
+	}
+	$limt_str = "LIMIT 0, {$limt_num}";
+	$site_code_str = "AND G.site_code={$site_code}";
+	$supply_usd_price_str = "AND G.supply_usd_price<={$max_usd}";
+
+	$group_by_str = "";
+	if($is_re)
+	{
+		$and_str = "";
+		$limt_str = "";
+		$site_code_str = "";
+		//$group_by_str = "GROUP BY G.b_code";
+		if($site_code)
+		{
+			if(count($arr_department_site_code) > 0)
+			{
+				if(!in_array($site_code,$arr_department_site_code))
+				{
+					//$group_by_str = "GROUP BY G.c_value";
+				}
+			}
+		}
+	}
+
+	$in_view_g_uid_and = "";
+	if($view_g_uid_list && !$is_re)
+	{
+		$limt_str = "";
+		$site_code_str = "";
+		$supply_usd_price_str = "";
+		
+		$arr_main_uid = explode("|", $view_g_uid_list);
+		$arr_main_uid = array_unique($arr_main_uid);
+		$arr_new_main_uid = array();
+		foreach($arr_main_uid AS $main_new)
+		{
+			$main_new = trim($main_new);
+			if(!$main_new) continue;
+			$arr_new_main_uid[] = "'".$main_new."'";
+		}
+		$in_view_g_uid = implode(",", $arr_new_main_uid);
+		
+		$in_view_g_uid_and = "AND G.view_g_uid IN ({$in_view_g_uid})";
+	}
+	
+	$tmall_img_join_tb = "";
+	$tmall_img_join_and = "";
+	if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+	{
+		$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+		$tmall_img_join_and = "AND G.g_uid=GIT.g_uid";
+	}
+
+	$arr_query['1'] = "
+		SELECT
+			G.g_uid, G.c_value
+		FROM
+			{$goods_db}.goods G, {$goods_db}.goods_info GI{$tmall_img_join_tb}
+		WHERE G.g_uid=GI.g_uid
+		{$tmall_img_join_and}
+		{$in_view_g_uid_and}
+		AND G.sl_uid=2
+		AND G.isAvailable=2 
+		AND G.isSoldout=0
+		{$site_code_str}
+		AND G.d_parent_c_value={$p_c_code}
+		{$supply_usd_price_str}
+		{$and_str}
+		AND G.c_code NOT IN ({$not_in_c_code})
+		{$not_in_site_code}
+		{$group_by_str}
+		ORDER BY G.g_uid DESC
+		{$limt_str}
+	";
+	//COUNT(G.g_uid)
+	$arr_query['2'] = "
+		SELECT
+			COUNT(*), MAX(G.g_price) AS max_g_price, MIN(G.g_price) AS min_g_price
+		FROM
+			{$goods_db}.goods G, {$goods_db}.goods_info GI{$tmall_img_join_tb}
+		WHERE G.g_uid=GI.g_uid
+		{$tmall_img_join_and}
+		{$in_view_g_uid_and}
+		AND G.sl_uid=2
+		AND G.isAvailable=2 
+		AND G.isSoldout=0
+		{$site_code_str}
+		AND G.d_parent_c_value={$p_c_code}
+		{$supply_usd_price_str}
+		{$and_str}
+		{$not_in_site_code}
+		AND G.c_code NOT IN ({$not_in_c_code})
+	";
+	$arr_query['max_num'] = $limt_num;
+
+	return $arr_query;
+}
+
+function func_ca_rand_num($num)
+{
+	$rand_num = rand(0, $num);
+	return $rand_num;
+}
+
+function func_restriction_check($c_value)
+{
+	$arr_skip_c_value = array('1000_1','1000_4','1000_5','1196_1','1196_6_1_1','1196_7_1');
+
+	$is_true = 1;
+	foreach($arr_skip_c_value AS $t_c_value)
+	{
+		$count = substr_count($c_value, $t_c_value); 
+		if($count>0)
+		{
+			$is_true = 0;
+			break;
+		}
+	}
+
+	return $is_true;
+}
+
+function func_ca_query_str($arr_g_uid, $p_c_code, $is_hot=0)
+{
+	global $goods_db, $IS_USE_TMALL_FULL_IMG, $ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE;
+	$in_g_uid = implode(",", $arr_g_uid);
+	
+	$tmall_img_join_tb = "";
+	$tmall_img_join_and = "";
+	if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+	{
+		$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+		$tmall_img_join_and = "AND G.g_uid=GIT.g_uid";
+	}
+	
+	if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+	{
+		$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+		$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+	}
+	$not_in_site_code = "";
+	if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+	{
+		$not_in_site_code = "AND G.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+	}
+	
+	$arr_query = array();
+	$arr_query['1'] = "
+		SELECT 
+			G.g_uid, G.view_g_uid, G.img_cache_num, G.site_code, G.sl_uid, G.g_title, G.g_cost, G.g_cost_h, G.tax_percent, G.tax_percent_h, G.shipping_fee, G.shipping_fee_h, G.normal_sale_rate, G.is_new_img, G.n_code, G.c_value,
+			GB.b_code, GB.b_name, GB.b_name_cn, GB.margin_rate
+		FROM 
+			{$goods_db}.goods G, {$goods_db}.goods_brand GB{$tmall_img_join_tb}
+		WHERE G.b_code=GB.b_code
+		{$tmall_img_join_and}
+		AND G.g_uid IN ({$in_g_uid})
+		{$not_in_site_code}
+		ORDER BY G.g_uid DESC
+	";
+	if($is_hot)
+	{
+		$arr_query['hot'] = "UPDATE {$goods_db}.goods_main_display_category SET hot_view_g_uid_list='{$in_g_uid}' WHERE type='{$p_c_code}_h'";
+		//COUNT(G.g_uid)
+		$arr_query['2'] = "
+			SELECT 
+				COUNT(*) AS t_count, MAX(G.g_price) AS max_g_price, MIN(G.g_price) AS min_g_price
+			FROM 
+				{$goods_db}.goods G, {$goods_db}.goods_brand GB{$tmall_img_join_tb}
+			WHERE G.b_code=GB.b_code
+			{$tmall_img_join_and}
+			AND G.isAvailable=2 
+			AND G.isSoldout=0
+			AND G.d_parent_c_value={$p_c_code}
+			AND G.g_uid NOT IN ({$in_g_uid})
+			{$not_in_site_code}
+		";
+	}
+
+	return $arr_query;
+}
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+
+$arr_price_basic_info = func_get_price_basic_info($dbconn, '');
+$margin_rate = $arr_price_basic_info['margin_rate'];
+$exchange_rate = $arr_price_basic_info['exchange_rate'];
+$exchange_rate_krw_cny = $arr_price_basic_info['exchange_rate_krw_cny'];
+$exchange_rate_eur = $arr_price_basic_info['exchange_rate_eur'];
+$exchange_rate_gbp = $arr_price_basic_info['exchange_rate_gbp'];
+unset($arr_price_basic_info);
+
+$arr_d_parent_c_code = array('1000','1196','1167','1119','1319');
+$arr_page = array(1,2,3);
+//$arr_d_parent_c_code = array('1000');
+//$arr_page = array(1);
+
+$ARR_CA_HOT = array();
+$arr_g_uid_overlap = array();
+$arr_b_code_overlap = array();
+$hot_max_num = 3;
+$ARR_IN_CA_G_UID = array();
+$arr_in_site_g_uid = array();
+$arr_c_value_overlap = array();
+$max_usd = 600;
+$max_page_per_site_num = 1; // 1page = max 1 site
+$max_page_per_c_num = 2; // 1page = max 2 category
+$max_page_per_b_num = 2; // 1page = max 2 brand
+$max_page_per_num = 20;
+$max_last_time_num = 8;
+
+/*
+$query_t = "SELECT type, view_g_uid_list FROM {$goods_db}.goods_main_display_category ORDER BY uid ASC";
+//echo $query."\r\n";
+$result_t = dbQuery($query_t, $dbconn);
+while($row_t=mysql_fetch_assoc($result_t))
+{
+	$arr_is_hot = explode("_", $row_t['type']);
+	$is_hot_count = count($arr_is_hot);
+	if($is_hot_count > 1)
+	{
+		$p_c_code = $arr_is_hot['0'];
+		$arr_query = func_query_str(0, $p_c_code, 0, '', 0, 0, $row_t['view_g_uid_list']);
+		$query1 = $arr_query['1'];
+		//echo $query1."\r\n";
+		$result = dbQuery($query1,$dbconn);
+		while($row=mysql_fetch_assoc($result))
+		{
+			$g_uid = $row['g_uid'];
+			if(in_array($g_uid,$arr_g_uid_overlap))
+			{
+				continue;
+			}
+			$arr_g_uid_overlap[] = $g_uid;
+			$ARR_CA_HOT[$p_c_code][] = $g_uid;
+		}
+		$t_hot_count = count($ARR_CA_HOT[$p_c_code]);
+		if($t_hot_count < $hot_max_num)
+		{
+			$arr_query = func_query_str(0, $p_c_code, $max_usd, '', 0, 1, 1);
+			$query1 = $arr_query['1'];
+			//echo $query1."\r\n";
+			$result = dbQuery($query1,$dbconn);
+			while($row=mysql_fetch_assoc($result))
+			{
+				$g_uid = $row['g_uid'];
+				if(in_array($g_uid,$arr_g_uid_overlap))
+				{
+					continue;
+				}
+				$arr_g_uid_overlap[] = $g_uid;
+				$ARR_CA_HOT[$p_c_code][] = $g_uid;
+				$temp_t_hot_count = count($ARR_CA_HOT[$p_c_code]);
+				if($temp_t_hot_count >= $hot_max_num)
+				{
+					break;
+				}
+			}
+		}
+	}
+	else
+	{
+		continue;
+	}
+}
+*/
+//echo("<pre>");print_r($arr_ca_hot);echo("</pre>");
+//echo("<pre>");print_r($ARR_CA_HOT);echo("</pre>");exit;
+$arr_department_site_code = array();
+$query = "SELECT site_code FROM {$goods_db}.site_info WHERE is_active>0 AND is_department>0";
+$result = dbQuery($query, $dbconn);
+while($row=mysql_fetch_assoc($result))
+{
+	$arr_department_site_code[] = $row['site_code'];
+}
+
+$arr_c_site_code = array();
+$arr_goods_update_time = array();
+foreach($arr_d_parent_c_code AS $p_c_code)
+{
+	$query = "SELECT site_code, goods_update_time FROM {$goods_db}.site_info_category WHERE d_parent_c_value={$p_c_code} ORDER BY goods_update_time DESC";
+	$result = dbQuery($query, $dbconn);
+	while($row=mysql_fetch_assoc($result))
+	{
+		if($row['site_code']==29 || $row['site_code']==1) continue;//overstock, buyfine
+		$arr_c_site_code[$p_c_code][] = $row['site_code'];
+		$arr_goods_update_time[$row['site_code']."_".$p_c_code] =  $row['goods_update_time'];
+	}
+}
+
+dbClose($dbconn);
+//sleep(1);
+usleep(500000);// 0.5
+//echo("<pre>");print_r($arr_c_site_code);echo("</pre>");
+//echo("<pre>");print_r($arr_goods_update_time);echo("</pre>");
+
+foreach($arr_page AS $page)
+{
+	foreach($arr_d_parent_c_code AS $p_c_code)
+	{
+		$max_site_code = 0;
+		$pre_total_record = 0;
+		
+		$dbconn = dbSelect($goods_db,dbConn($goods_host));
+		
+		foreach($arr_c_site_code[$p_c_code] AS $site_code)
+		{
+			$date_time = $arr_goods_update_time[$site_code."_".$p_c_code];
+			$arr_query = func_query_str($site_code, $p_c_code, $max_usd, $date_time, $max_last_time_num, 0, '');
+			$query1 = $arr_query['1'];
+			$query2 = $arr_query['2'];
+			$query_max_num = $arr_query['max_num'];
+			//echo $query1."\r\n";
+			//echo $query2."\r\n";exit;
+			$result2 = dbQuery($query2,$dbconn);
+			$total_record = mysql_result($result2,0,0);
+			$max_g_price = mysql_result($result2,0,1);
+			$min_g_price = mysql_result($result2,0,2);
+			if($total_record < 1)
+			{
+				//echo "xxxx - ".$p_c_code." = ".$site_code."\r\n";
+				continue;
+			}
+			else
+			{
+				$result = dbQuery($query1,$dbconn);
+
+				if($total_record > $pre_total_record)
+				{
+					$pre_total_record = $total_record;
+					$max_site_code = $site_code;
+				}
+				
+				if($total_record > $query_max_num)
+				{
+					$total_record = $query_max_num;
+				}
+				$max_num = $total_record-1;
+				for($i=0; $i<$total_record; $i++)
+				{
+					$rand_num = func_ca_rand_num($max_num);
+					
+					$g_uid = mysql_result($result,$rand_num,0);
+					$c_value = mysql_result($result,$rand_num,1);
+					//$b_code = mysql_result($result,$rand_num,2);
+					$arr_t_c_value = explode("_", $c_value);
+					$c_value_3 = $arr_t_c_value['0']."_".$arr_t_c_value['1']."_".$arr_t_c_value['2'];
+					$check_c_count = count($arr_c_value_overlap[$page][$p_c_code][$c_value_3]);
+					//echo "check_c_count = ".$check_c_count."\r\n"; 
+					if($p_c_code!=1167 && $p_c_code!=1319 && $check_c_count>=$max_page_per_c_num)
+					{
+						//echo "p_c_code = ".$p_c_code."\r\n";
+						continue;
+					}
+					/*
+					$check_b_count = count($arr_b_code_overlap[$page][$p_c_code][$b_code]);
+					if($check_b_count >= $max_page_per_b_num)
+					{
+						continue;
+					}
+					*/
+					if(in_array($g_uid,$arr_g_uid_overlap))
+					{
+						continue;
+					}
+					//echo $g_uid." = ".$c_value."\r\n";
+					
+					$is_true = func_restriction_check($c_value);
+					if($is_true)
+					{
+						$check_site_count = count($arr_in_site_g_uid[$page][$p_c_code][$site_code]);
+						//echo "check_site_count = ".$check_site_count."\r\n"; 
+						if($check_site_count >= $max_page_per_site_num)
+						{
+							break;
+						}
+						$arr_in_site_g_uid[$page][$p_c_code][$site_code][] = $g_uid;
+						$arr_c_value_overlap[$page][$p_c_code][$c_value_3][] = $g_uid;
+						//$arr_b_code_overlap[$page][$p_c_code][$b_code][] = $g_uid;
+						$arr_g_uid_overlap[] = $g_uid;
+						$ARR_IN_CA_G_UID[$page][$p_c_code][] = $g_uid;
+
+						//echo("<pre> site : ");print_r($arr_in_site_g_uid);echo("</pre>");
+						//echo("<pre> ca : ");print_r($arr_c_value_overlap);echo("</pre>");
+						//echo("<pre> uid : ");print_r($ARR_IN_CA_G_UID);echo("</pre>");
+					}
+					else
+					{
+						//echo "g_uid = ".$g_uid."\r\n";
+					}
+				}
+
+				$ca_page_per_count = count($ARR_IN_CA_G_UID[$page][$p_c_code]);
+				//echo $p_c_code." = "."ca_page_per_count = ".$ca_page_per_count."\r\n";
+				if($ca_page_per_count >= $max_page_per_num)
+				{
+					break;
+				}
+			}
+			//echo $p_c_code." = ".$site_code." = ".$date_time."\r\n";
+		}
+		//echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+		//echo("<pre>");print_r($ARR_IN_CA_G_UID);echo("</pre>");exit;
+		$t_ca_page_per_count = count($ARR_IN_CA_G_UID[$page][$p_c_code]);
+		if($t_ca_page_per_count < $max_page_per_num)
+		{
+			//echo "rrrrrrrrrrrrr".$p_c_code." = ".$t_ca_page_per_count."\r\n";
+			$date_time = $arr_goods_update_time[$max_site_code."_".$p_c_code];
+			$arr_query = func_query_str($max_site_code, $p_c_code, $max_usd, $date_time, $max_last_time_num, 1, '');
+			$query1 = $arr_query['1'];
+			//echo $query1."\r\n";
+			$result = dbQuery($query1,$dbconn);
+			while($row=mysql_fetch_assoc($result))
+			{
+				$g_uid = $row['g_uid'];
+				if(in_array($g_uid,$arr_g_uid_overlap))
+				{
+					continue;
+				}
+				$is_true = func_restriction_check($row['c_value']);
+				if(!$is_true)
+				{
+					continue;
+				}
+				$arr_g_uid_overlap[] = $g_uid;
+				$ARR_IN_CA_G_UID[$page][$p_c_code][] = $g_uid;
+				$temp_t_ca_page_per_count = count($ARR_IN_CA_G_UID[$page][$p_c_code]);
+				if($temp_t_ca_page_per_count >= $max_page_per_num)
+				{
+					break;
+				}
+			}
+		}
+		dbClose($dbconn);
+		//sleep(1);
+		usleep(700000);// 0.7
+
+	}
+}
+//echo("<pre>");print_r($ARR_IN_CA_G_UID);echo("</pre>");exit;
+//echo("<pre>");print_r($arr_g_uid_overlap);echo("</pre>");
+
+$file_include = "<?php
+	\$ARR_CA_HOT_G_UID = array();
+	\$ARR_CA_PAGE_G_UID = array();
+";
+
+/*
+foreach($ARR_CA_HOT AS $h_ca_code=>$arr_h_g_uid)
+{
+	$h_g_uid = implode(",",$arr_h_g_uid);
+	$file_include .= "\$ARR_CA_HOT_G_UID[{$h_ca_code}] = array($h_g_uid);\n";
+}
+*/
+
+foreach($ARR_IN_CA_G_UID AS $page=>$arr_value)
+{
+	foreach($arr_value AS $ca_ca_code=>$arr_ca_g_uid)
+	{
+		$ca_g_uid = implode(",",$arr_ca_g_uid);
+		$file_include .= "\$ARR_CA_PAGE_G_UID[{$page}][{$ca_ca_code}] = array($ca_g_uid);\n";
+	}
+}
+$file_include = $file_include."\n?>";
+//echo $file_include;exit;
+
+$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_g_uid.inc";
+write_file($file_loc,$file_include);
+unset($file_include);
+chown($file_loc, "daemon");
+chgrp($file_loc, "daemon");
+chmod($file_loc, 0775);
+
+if($IS_RSYNC_CA_MAIN_CACHE_IP > 0)//$IS_RSYNC_CA_MAIN_CACHE_IP assign COMM_FUNC.inc
+{
+	func_rsync_exec($ARR_RSYNC_CA_MAIN_CACHE_IP, $ARR_RSYNC_CA_MAIN_CACHE_SOURCE, $ARR_RSYNC_CA_MAIN_CACHE_DESTINATION_2);
+}
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+dbQuery("UPDATE {$goods_db}.goods SET is_ca_main=0 WHERE is_ca_main=1 AND d_parent_c_value IN (1000,1196,1167,1119,1319)", $dbconn);
+
+$arr_chunk_g_uid = array_chunk($arr_g_uid_overlap, 30);
+//echo("<pre>");print_r($arr_chunk_g_uid);echo("</pre>");
+foreach($arr_chunk_g_uid AS $arr_ca_main_g_uid)
+{
+	$in_g_uid = implode(",", $arr_ca_main_g_uid);
+	$query = "UPDATE {$goods_db}.goods SET is_ca_main=1 WHERE g_uid IN ({$in_g_uid})";
+	//echo $query."\r\n";
+	dbQuery($query, $dbconn);
+}
+dbClose($dbconn);
+
+//$arr_g_uid_overlap
+
+unset($arr_d_parent_c_code);
+unset($arr_page);
+unset($ARR_CA_HOT);
+unset($arr_g_uid_overlap);
+unset($arr_b_code_overlap);
+unset($ARR_IN_CA_G_UID);
+unset($arr_in_site_g_uid);
+unset($arr_c_value_overlap);
+unset($arr_is_hot);
+unset($arr_query);
+unset($arr_c_site_code);
+unset($arr_goods_update_time);
+unset($query);
+unset($query1);
+unset($query2);
+
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("Category Main - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>         

@@ -1,0 +1,597 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+
+$start_time = time();
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+
+$ARR_API_CATEGORY_BRAND_INFO = array();
+$ARR_CATEGORY_BRAND_IDX = array();
+$ARR_LIST_HOT_STR = array();
+$ARR_LIST_JS_MORE_HOT_STR = array();
+$ARR_BRAND_LIST_NUM = array();
+$ARR_BRAND_BREAK_NUM = array();
+$arr_idx = array("a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z");
+
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+$not_in_site_code = "";
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	$not_in_site_code = "AND A.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+}
+
+$arr_ca_hot_brand_list = array();
+$query_t = "SELECT c_value FROM {$goods_db}.goods_category WHERE is_view=1 AND d_num IN (1, 2) ORDER BY c_value ASC";
+$result_t = dbQuery($query_t,$dbconn);
+while($row_t=mysql_fetch_assoc($result_t))
+{
+	$is_hot = 1;
+	
+	$arr_c_value = explode("_", $row_t['c_value']);
+	$c1 = $arr_c_value['0'];
+	$c2 = $arr_c_value['1'];
+	$dt_count = count($arr_c_value);
+	
+	if($row_t['c_value']=='1319_5')
+	{
+		$is_hot = 0;
+	}
+	
+	if($c1=='1835' ||$c1=='1819' || $row_t['c_value']=='1819_1')
+	{
+		$is_hot = 0;
+	}
+	
+	$list_hot_str = "";
+	$list_js_more_hot_str = "";
+	$ca_str2 = "";
+	$arr_api_ca_brand_info_str = "";
+	if($is_hot == 1)
+	{
+		//$ca_join_table = ", {$goods_db}.goods_category CA";
+		//$ca_join_and = "AND A.c_code=CA.c_code";
+		$ca_join_table = "";
+		$ca_join_and = "";
+		if($c1 && $c2)
+		{
+			$ca_str2 = $row_t['c_value'];
+			$ca_and_str = func_ca_query_and_str($row_t['c_value']);
+		}
+		else
+		{
+			$ca_join_table = "";
+			$ca_join_and = "";
+			$ca_and_str = func_ca_query_and_str($c1);
+		}		
+		
+		$arr_not_in_b_code_str = array();
+		$not_in_b_code_str = "";
+		if($c1=='1319')
+		{
+			$arr_not_in_b_code_str[] = 3804;
+			$not_in_b_code_str = "AND B.b_code NOT IN (3804)";
+		}
+		$brand_limit_num = 24;
+		$brand_break_num = 12;
+		
+		$query = "
+			SELECT 
+				B.b_idx
+			FROM 
+				{$goods_db}.goods A, {$goods_db}.goods_brand B{$ca_join_table}{$join_table}
+			WHERE A.b_code=B.b_code
+			{$ca_join_and}
+			AND A.isAvailable=2 
+			AND A.isSoldout=0
+			AND A.sl_uid=2
+			{$ca_and_str}
+			{$not_in_b_code_str}
+			{$not_in_site_code}
+			GROUP BY B.b_idx ORDER BY B.b_idx ASC
+		";
+		$result = dbQuery($query,$dbconn);
+		while($row=mysql_fetch_assoc($result))
+		{
+			if($row['b_idx'] == '*')
+			{
+				$row['b_idx'] = 'etc';
+			}
+			
+			$ARR_CATEGORY_BRAND_IDX[$row_t['c_value']][] = "'".strtolower($row['b_idx'])."'";
+		}
+		if(count($ARR_CATEGORY_BRAND_IDX[$row_t['c_value']]) > 0)
+		{
+			$ARR_CATEGORY_BRAND_IDX[$row_t['c_value']] = array_unique($ARR_CATEGORY_BRAND_IDX[$row_t['c_value']]);
+		}
+		
+		//COUNT(B.b_code)
+		$query = "
+			SELECT 
+				MAX(A.view_g_uid) AS max_view_g_uid,
+				COUNT(*) AS each_br_count, B.b_code, B.b_name, B.b_name_cn, B.b_f_name, B.is_b_f
+			FROM 
+				{$payment_db}.payment_v2_each PE, {$goods_db}.goods A, {$goods_db}.goods_brand B{$ca_join_table}{$join_table}
+			WHERE A.g_uid=PE.g_uid 
+			AND A.b_code=B.b_code
+			{$ca_join_and}
+			AND PE.pa_status IN (2,3,4,5,6,7)
+			AND PE.m_uid NOT IN (9,24)
+			AND A.isAvailable=2 
+			AND A.isSoldout=0
+			AND A.sl_uid=2
+			{$ca_and_str}
+			{$not_in_b_code_str}
+			{$not_in_site_code}
+			GROUP BY B.b_code ORDER BY each_br_count DESC LIMIT 0, {$brand_limit_num}
+		";
+		$result = dbQuery($query,$dbconn);
+		$brand_list_num = 0;
+		$list_hot_str = "";
+		while($row=mysql_fetch_assoc($result))
+		{
+			$brand_list_num++;
+
+			$arr_not_in_b_code_str[] = $row['b_code'];
+			$arr_brand_uri = func_get_brand_uri($row['b_code'], $row['b_f_name'], "", $row['is_b_f'], 0, "");
+			$brand_uri = $arr_brand_uri['uri']."?in=1&n=1&minP=&maxP=&is_ca_br=1&dt={$dt_count}&c1={$c1}&c2={$ca_str2}&c3=&c4=";
+			
+			$arr_api_ca_brand_info_str[] = "'{$row['b_code']}'=>array('b_name'=>'{$row['b_name']}','b_name_cn'=>'{$row['b_name_cn']}')";
+			if($row['b_name_cn'] && $_COOKIE['BF_LANG']!='en')
+			{
+				$row['b_name'] = $row['b_name_cn']." ".$row['b_name'];
+			}
+			$b_name_title = $row['b_name'];
+			$arr_ca_hot_brand_list[$row['b_code']]['is_hot'] = 1;
+			
+			if($brand_list_num > $brand_break_num)
+			{
+				$list_js_more_hot_str .= "<li title='{$b_name_title}'><a href='".$brand_uri."' target='_blank'>".$b_name_title."</a></li>";
+			}
+			else
+			{
+				$list_hot_str .= "<li title='{$b_name_title}'><a href='".$brand_uri."' target='_blank'>".$b_name_title."</a></li>";
+			}
+		}
+		
+		if($brand_list_num < $brand_limit_num)
+		{
+			$brand_limit_minus_num = $brand_limit_num-$brand_list_num;
+	
+			$count_not_in_b_code_str = count($arr_not_in_b_code_str);
+			if($count_not_in_b_code_str > 0)
+			{
+				$arr_not_in_b_code_str = array_unique($arr_not_in_b_code_str);
+				$not_in_b_code_implode = implode(",",$arr_not_in_b_code_str);
+				$not_in_b_code_str = "AND B.b_code NOT IN ({$not_in_b_code_implode})";
+			}
+			
+			//COUNT(B.b_code)
+			$query = "
+				SELECT 
+					MAX(A.view_g_uid) AS max_view_g_uid,
+					COUNT(*) AS each_br_count, B.b_code, B.b_name, B.b_name_cn, B.b_f_name, B.is_b_f
+				FROM 
+					{$goods_db}.goods A, {$goods_db}.goods_brand B{$ca_join_table}{$join_table}
+				WHERE A.b_code=B.b_code
+				{$ca_join_and}
+				AND A.isAvailable=2 
+				AND A.isSoldout=0
+				AND A.sl_uid=2
+				{$ca_and_str}
+				{$not_in_b_code_str}
+				{$not_in_site_code}
+				GROUP BY B.b_code ORDER BY each_br_count DESC LIMIT 0, {$brand_limit_minus_num}
+			";
+			//echo $query."<br />";
+			$result = dbQuery($query,$dbconn);
+			while($row=mysql_fetch_assoc($result))
+			{
+				$brand_list_num++;
+	
+				$arr_brand_uri = func_get_brand_uri($row['b_code'], $row['b_f_name'], "", $row['is_b_f'], 0, "");
+				$brand_uri = $arr_brand_uri['uri']."?in=1&n=1&minP=&maxP=&is_ca_br=1&dt={$dt_count}&c1={$c1}&c2={$ca_str2}&c3=&c4=";
+				if($row['b_name_cn'] && $_COOKIE['BF_LANG']!='en')
+				{
+					$row['b_name'] = $row['b_name_cn']." ".$row['b_name'];
+				}
+				$b_name_title = $row['b_name'];
+				$arr_ca_hot_brand_list[$row['b_code']]['is_hot'] = 1;
+				
+				if($brand_list_num > $brand_break_num)
+				{
+					$list_js_more_hot_str .= "<li title='{$b_name_title}'><a href='".$brand_uri."' target='_blank'>".$b_name_title."</a></li>";
+				}
+				else
+				{
+					$list_hot_str .= "<li title='{$b_name_title}'><a href='".$brand_uri."' target='_blank'>".$b_name_title."</a></li>";
+				}
+			}
+		}
+		$list_js_more_hot_str = str_replace("\"","\\\"",$list_js_more_hot_str);
+		
+		$ARR_BRAND_LIST_NUM[$row_t['c_value']] = $brand_list_num;
+		$ARR_BRAND_BREAK_NUM[$row_t['c_value']] = $brand_break_num;		
+		$ARR_LIST_HOT_STR[$row_t['c_value']] = $list_hot_str;
+		$ARR_LIST_JS_MORE_HOT_STR[$row_t['c_value']] = $list_js_more_hot_str;
+		if(count($arr_api_ca_brand_info_str) > 0)
+		{
+			//print_r($arr_api_ca_brand_info_str);
+			$ARR_API_CATEGORY_BRAND_INFO[$row_t['c_value']] = "array(".@implode(",", $arr_api_ca_brand_info_str).")";
+		}
+		unset($arr_api_ca_brand_info_str);
+	}
+}
+dbClose($dbconn);
+sleep(1);
+
+$arr_d_parent_c_code = array('1000','1196','1167','1119','1319');
+$file_include = "";
+foreach($arr_d_parent_c_code AS $parent_c_value)
+{
+	$file_include = "<?php\n\n\$ARR_CATEGORY_BRAND_IDX = array();\n\$ARR_LIST_HOT_STR = array();\n\$ARR_LIST_JS_MORE_HOT_STR = array();\n\$ARR_BRAND_LIST_NUM = array();\n\$ARR_BRAND_BREAK_NUM = array();\n\$ARR_API_CATEGORY_BRAND_INFO = array();\n";	
+	$is_file = 0;
+	foreach($ARR_CATEGORY_BRAND_IDX AS $key_c=>$arr_value)
+	{
+		$arr_c_value = explode("_", $key_c);
+		$c1 = $arr_c_value['0'];
+		if($parent_c_value == $c1)
+		{
+			$b_idx = implode(",",$arr_value);
+			$file_include .= "\$ARR_CATEGORY_BRAND_IDX['{$key_c}'] = array({$b_idx});\n";
+			$file_include .= "\$ARR_LIST_HOT_STR['{$key_c}'] = \"{$ARR_LIST_HOT_STR[$key_c]}\";\n";
+			$file_include .= "\$ARR_LIST_JS_MORE_HOT_STR['{$key_c}'] = \"{$ARR_LIST_JS_MORE_HOT_STR[$key_c]}\";\n";
+			$file_include .= "\$ARR_BRAND_LIST_NUM['{$key_c}'] = {$ARR_BRAND_LIST_NUM[$key_c]};\n";
+			$file_include .= "\$ARR_BRAND_BREAK_NUM['{$key_c}'] = {$ARR_BRAND_BREAK_NUM[$key_c]};\n";
+			$file_include .= "\$ARR_API_CATEGORY_BRAND_INFO['{$key_c}'] = {$ARR_API_CATEGORY_BRAND_INFO[$key_c]};\n";
+			$is_file = 1;
+		}
+	}
+	
+	if($is_file == 1)
+	{
+		$file_include = $file_include."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_brand_{$parent_c_value}.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+	}
+}
+unset($file_include);
+
+$arr_ca_1_brand_list = array();
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+foreach($arr_d_parent_c_code AS $parent_c_value)
+{
+	$query = "
+		SELECT 
+			COUNT(*) AS each_br_count, B.b_code, B.b_name, B.b_name_cn, B.b_f_name, B.is_b_f
+		FROM 
+			{$goods_db}.goods A, {$goods_db}.goods_brand B
+		WHERE A.b_code=B.b_code
+		AND A.isAvailable=2 
+		AND A.isSoldout=0
+		AND A.d_parent_c_value={$parent_c_value}
+		{$not_in_site_code}
+		GROUP BY B.b_code ORDER BY B.b_name ASC
+	";
+	$result = dbQuery($query,$dbconn);
+	while($row=mysql_fetch_assoc($result))
+	{
+		$row['b_code'] = intval($row['b_code']);
+		$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['b_name'] = $row['b_name'];
+		$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['b_name_cn'] = $row['b_name_cn'];
+		$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['total_items'] =  intval($row['each_br_count']);
+		if($arr_ca_hot_brand_list[$row['b_code']]['is_hot'] > 0)
+		{
+			$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_hot'] = 1;
+		}
+		else
+		{
+			$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_hot'] = 0;
+		}
+		if($row['each_br_count']>67 || (in_array($row['b_code'],$ARR_PREMIER_BRAND)))
+		{
+			$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_major'] = 1;
+		}
+		else
+		{
+			$arr_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_major'] = 0;
+		}
+	}
+}
+dbClose($dbconn);
+sleep(1);
+$file_include = "";
+if(count($arr_ca_1_brand_list) > 0)
+{
+	ksort($arr_ca_1_brand_list);
+	foreach($arr_ca_1_brand_list AS $parent_c_value=>$arr_value)
+	{
+		$file_include = "<?php\n\$ARR_CA_BRAND_LIST = array();\n";
+		$arr_new_arr_value = array();
+		$arr_ca1_brand_idx = array();
+		foreach($arr_value AS $b_code=>$arr_1_value)
+		{
+			$b_name_lower = strtolower($arr_1_value['b_name']);
+			$idx = substr($b_name_lower,0,1);
+			if(!in_array($idx, $arr_idx))
+			{
+				$idx = "zzz_etc";
+			}
+			$idx = "'".$idx."'";
+			if(count($arr_ca1_brand_idx) > 0)
+			{
+				if(!in_array($idx, $arr_ca1_brand_idx))
+				{
+					$arr_ca1_brand_idx[] = $idx;
+				}
+			}
+			else
+			{
+				$arr_ca1_brand_idx[] = $idx;
+			}
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['b_name'] = \"{$arr_1_value['b_name']}\";";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['b_name_cn'] = \"{$arr_1_value['b_name_cn']}\";";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['total_items'] = {$arr_1_value['total_items']};";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['is_hot'] = {$arr_1_value['is_hot']};";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['is_major'] = {$arr_1_value['is_major']};";
+		}
+		if(count($arr_new_arr_value) > 0)
+		{
+			$ca1_brand_idx = "";
+			if(count($arr_ca1_brand_idx) > 0)
+			{
+				sort($arr_ca1_brand_idx);
+				$ca1_brand_idx = "\$ARR_CA_BRAND_IDX = array(".implode(",",$arr_ca1_brand_idx).");\n";
+				$ca1_brand_idx = str_ireplace("zzz_etc","etc",$ca1_brand_idx);
+			}
+			$new_arr_value = implode("\n",$arr_new_arr_value);
+			$file_include = $file_include.$ca1_brand_idx.$new_arr_value."\n?>";
+			$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_full_ca_1_brand_{$parent_c_value}.inc";
+			write_file($file_loc,$file_include);
+			unset($file_include);
+			unset($new_arr_value);
+			chown($file_loc, "daemon");
+			chgrp($file_loc, "daemon");
+			chmod($file_loc, 0775);
+			unset($ca1_brand_idx);
+		}
+		unset($arr_ca1_brand_idx);
+		unset($arr_new_arr_value);
+	}
+}
+unset($arr_ca_1_brand_list);
+unset($file_include);
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+$query = "
+	SELECT 
+		COUNT(*) AS each_br_count, B.b_code, B.b_name, B.b_name_cn, B.b_f_name, B.is_b_f
+	FROM 
+		{$goods_db}.goods A, {$goods_db}.goods_brand B
+	WHERE A.b_code=B.b_code
+	AND A.isAvailable=2 
+	AND A.isSoldout=0
+	AND A.now_is_sale=1
+	{$not_in_site_code}
+	GROUP BY B.b_code ORDER BY B.b_name ASC
+";
+$result = dbQuery($query,$dbconn);
+dbClose($dbconn);
+$arr_sale_ca_brand_list = array();
+while($row=mysql_fetch_assoc($result))
+{
+	$row['b_code'] = intval($row['b_code']);
+	$arr_sale_ca_brand_list[$row['b_code']]['b_name'] = $row['b_name'];
+	$arr_sale_ca_brand_list[$row['b_code']]['b_name_cn'] = $row['b_name_cn'];
+	$arr_sale_ca_brand_list[$row['b_code']]['total_items'] =  intval($row['each_br_count']);
+	if($arr_ca_hot_brand_list[$row['b_code']]['is_hot'] > 0)
+	{
+		$arr_sale_ca_brand_list[$row['b_code']]['is_hot'] = 1;
+	}
+	else
+	{
+		$arr_sale_ca_brand_list[$row['b_code']]['is_hot'] = 0;
+	}
+	if($row['each_br_count']>67 || (in_array($row['b_code'],$ARR_PREMIER_BRAND)))
+	{
+		$arr_sale_ca_brand_list[$row['b_code']]['is_major'] = 1;
+	}
+	else
+	{
+		$arr_sale_ca_brand_list[$row['b_code']]['is_major'] = 0;
+	}
+}
+sleep(1);
+$file_include = "";
+if(count($arr_sale_ca_brand_list) > 0)
+{
+	$file_include = "<?php\n\$ARR_CA_BRAND_LIST = array();\n";
+	$arr_new_arr_value = array();
+	$arr_ca1_brand_idx = array();
+	foreach($arr_sale_ca_brand_list AS $b_code=>$arr_1_value)
+	{
+		$b_name_lower = strtolower($arr_1_value['b_name']);
+		$idx = substr($b_name_lower,0,1);
+		if(!in_array($idx, $arr_idx))
+		{
+			$idx = "zzz_etc";
+		}
+		$idx = "'".$idx."'";
+		if(count($arr_ca1_brand_idx) > 0)
+		{
+			if(!in_array($idx, $arr_ca1_brand_idx))
+			{
+				$arr_ca1_brand_idx[] = $idx;
+			}
+		}
+		else
+		{
+			$arr_ca1_brand_idx[] = $idx;
+		}
+		$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['b_name'] = \"{$arr_1_value['b_name']}\";";
+		$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['b_name_cn'] = \"{$arr_1_value['b_name_cn']}\";";
+		$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['total_items'] = {$arr_1_value['total_items']};";
+		$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['is_hot'] = {$arr_1_value['is_hot']};";
+		$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['is_major'] = {$arr_1_value['is_major']};";
+	}
+	if(count($arr_new_arr_value) > 0)
+	{
+		$ca1_brand_idx = "";
+		if(count($arr_ca1_brand_idx) > 0)
+		{
+			sort($arr_ca1_brand_idx);
+			$ca1_brand_idx = "\$ARR_CA_BRAND_IDX = array(".implode(",",$arr_ca1_brand_idx).");\n";
+			$ca1_brand_idx = str_ireplace("zzz_etc","etc",$ca1_brand_idx);
+		}
+		$new_arr_value = implode("\n",$arr_new_arr_value);
+		$file_include = $file_include.$ca1_brand_idx.$new_arr_value."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_sale_full_ca_brand.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		unset($new_arr_value);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+		unset($ca1_brand_idx);
+	}
+	unset($arr_ca1_brand_idx);
+	unset($arr_new_arr_value);
+}
+unset($arr_sale_ca_brand_list);
+unset($file_include);
+
+$arr_sale_ca_1_brand_list = array();
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+foreach($arr_d_parent_c_code AS $parent_c_value)
+{
+	$query = "
+		SELECT 
+			COUNT(*) AS each_br_count, B.b_code, B.b_name, B.b_name_cn, B.b_f_name, B.is_b_f
+		FROM 
+			{$goods_db}.goods A, {$goods_db}.goods_brand B
+		WHERE A.b_code=B.b_code
+		AND A.isAvailable=2 
+		AND A.isSoldout=0
+		AND A.now_is_sale=1
+		AND A.d_parent_c_value={$parent_c_value}
+		{$not_in_site_code}
+		GROUP BY B.b_code ORDER BY B.b_name ASC
+	";
+	$result = dbQuery($query,$dbconn);
+	while($row=mysql_fetch_assoc($result))
+	{
+		$row['b_code'] = intval($row['b_code']);
+		$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['b_name'] = $row['b_name'];
+		$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['b_name_cn'] = $row['b_name_cn'];
+		$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['total_items'] =  intval($row['each_br_count']);
+		if($arr_ca_hot_brand_list[$row['b_code']]['is_hot'] > 0)
+		{
+			$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_hot'] = 1;
+		}
+		else
+		{
+			$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_hot'] = 0;
+		}
+		if($row['each_br_count']>67 || (in_array($row['b_code'],$ARR_PREMIER_BRAND)))
+		{
+			$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_major'] = 1;
+		}
+		else
+		{
+			$arr_sale_ca_1_brand_list[$parent_c_value][$row['b_code']]['is_major'] = 0;
+		}
+	}
+}
+dbClose($dbconn);
+sleep(1);
+$file_include = "";
+if(count($arr_sale_ca_1_brand_list) > 0)
+{
+	ksort($arr_sale_ca_1_brand_list);
+	foreach($arr_sale_ca_1_brand_list AS $parent_c_value=>$arr_value)
+	{
+		$file_include = "<?php\n\$ARR_CA_BRAND_LIST = array();\n";
+		$arr_new_arr_value = array();
+		$arr_ca1_brand_idx = array();
+		foreach($arr_value AS $b_code=>$arr_1_value)
+		{
+			$b_name_lower = strtolower($arr_1_value['b_name']);
+			$idx = substr($b_name_lower,0,1);
+			if(!in_array($idx, $arr_idx))
+			{
+				$idx = "zzz_etc";
+			}
+			$idx = "'".$idx."'";
+			if(count($arr_ca1_brand_idx) > 0)
+			{
+				if(!in_array($idx, $arr_ca1_brand_idx))
+				{
+					$arr_ca1_brand_idx[] = $idx;
+				}
+			}
+			else
+			{
+				$arr_ca1_brand_idx[] = $idx;
+			}
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['b_name'] = \"{$arr_1_value['b_name']}\";";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['b_name_cn'] = \"{$arr_1_value['b_name_cn']}\";";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['total_items'] = {$arr_1_value['total_items']};";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['is_hot'] = {$arr_1_value['is_hot']};";
+			$arr_new_arr_value[] = "\$ARR_CA_BRAND_LIST['{$b_code}']['is_major'] = {$arr_1_value['is_major']};";
+		}
+		if(count($arr_new_arr_value) > 0)
+		{
+			$ca1_brand_idx = "";
+			if(count($arr_ca1_brand_idx) > 0)
+			{
+				sort($arr_ca1_brand_idx);
+				$ca1_brand_idx = "\$ARR_CA_BRAND_IDX = array(".implode(",",$arr_ca1_brand_idx).");\n";
+				$ca1_brand_idx = str_ireplace("zzz_etc","etc",$ca1_brand_idx);
+			}
+			$new_arr_value = implode("\n",$arr_new_arr_value);
+			$file_include = $file_include.$ca1_brand_idx.$new_arr_value."\n?>";
+			$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_sale_full_ca_1_brand_{$parent_c_value}.inc";
+			write_file($file_loc,$file_include);
+			unset($file_include);
+			unset($new_arr_value);
+			chown($file_loc, "daemon");
+			chgrp($file_loc, "daemon");
+			chmod($file_loc, 0775);
+		}
+		unset($arr_ca1_brand_idx);
+		unset($arr_new_arr_value);
+	}
+}
+unset($arr_sale_ca_1_brand_list);
+unset($file_include);
+
+//print_r($ARR_CATEGORY_BRAND_IDX);
+//print_r($ARR_LIST_HOT_STR);
+//print_r($ARR_LIST_JS_MORE_HOT_STR);
+
+
+unset($ARR_CATEGORY_BRAND_IDX);
+unset($ARR_LIST_HOT_STR);
+unset($ARR_LIST_JS_MORE_HOT_STR);
+unset($ARR_API_CATEGORY_BRAND_INFO);
+
+if($IS_RSYNC_CA_BRAND_CACHE_IP > 0)//$IS_RSYNC_CA_BRAND_CACHE_IP assing COMM_FUNC.inc
+{
+	func_rsync_exec($ARR_RSYNC_CA_BRAND_CACHE_IP, $ARR_RSYNC_CA_BRAND_CACHE_SOURCE, $ARR_RSYNC_CA_BRAND_CACHE_DESTINATION);
+}
+
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("Category Main - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>         

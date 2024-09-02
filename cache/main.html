@@ -1,0 +1,1345 @@
+<?
+//exit;
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+include "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_todays_promotion.inc";
+
+$is_yes_print = 0;
+$start_time = time();
+//phpinfo();
+//echo $_SERVER['HOSTNAME']." - ".$goods_host;
+//exit;
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+//exit;
+
+$arr_price_basic_info = func_get_price_basic_info($dbconn, '');
+$margin_rate = $arr_price_basic_info['margin_rate'];
+$exchange_rate = $arr_price_basic_info['exchange_rate'];
+$exchange_rate_krw_cny = $arr_price_basic_info['exchange_rate_krw_cny'];
+$exchange_rate_eur = $arr_price_basic_info['exchange_rate_eur'];
+$exchange_rate_gbp = $arr_price_basic_info['exchange_rate_gbp'];
+unset($arr_price_basic_info);
+
+$root_url="http://imagegd.buyfine.net";
+
+$query = "SELECT view_g_uid FROM {$goods_db}.goods_main_display_exception";
+$result = dbQuery($query, $dbconn);
+$arr_display_exception_view_g_uid = array();
+while($row=mysql_fetch_assoc($result))
+{
+	$arr_display_exception_view_g_uid[] = $row['view_g_uid'];
+}
+
+//GuangFa Iframe page Array Price Start
+$query = "
+	SELECT 
+		A.g_uid, A.view_g_uid, A.img_cache_num, A.img_host, A.site_code, A.sl_uid, A.g_title, A.g_cost, A.g_cost_h, A.tax_percent, A.tax_percent_h, A.shipping_fee, A.shipping_fee_h, A.normal_sale_rate, A.is_new_img, A.n_code, A.c_value, A.is_fixed_price, A.fixed_price_info,
+		B.b_code, B.margin_rate
+	FROM 
+		{$goods_db}.goods A, {$goods_db}.goods_brand B
+	WHERE A.b_code=B.b_code
+	AND A.g_uid IN (2427131,2288059,2424627,2319403,2205987,2188355,1697627,2491923,2574059,2427299,2280915,1826859)
+";
+if($is_yes_print > 0)
+{
+	echo $query."\n";
+}
+$result = dbQuery($query, $dbconn);
+$iframe_html_gf = "";
+while($row=mysql_fetch_assoc($result))
+{
+	$arr_parameter = func_ca_parameter($row['c_value']);
+	$parameter = implode("&",$arr_parameter);
+
+	if($row['margin_rate'])
+	{
+		$margin_rate_n = $row['margin_rate'];
+	}
+	else
+	{
+		$margin_rate_n = $margin_rate;
+	}
+
+	$arr_todays_promotion_info = func_get_todays_promotion_info($row['g_cost'], $row['site_code'], $row['b_code'], $row['c_value']);
+	$is_todays_bf_sale = 0;
+	$is_todays_shipping_free = 0;
+	if($arr_todays_promotion_info['result'] == 1)
+	{
+		if($arr_todays_promotion_info['d_type'] == 'items')
+		{
+			if($arr_todays_promotion_info['sub_d_num'] > 0)
+			{
+				$row['g_cost'] = $row['g_cost'] - $arr_todays_promotion_info['sub_d_num'];
+			}
+		}
+		else if($arr_todays_promotion_info['d_type'] == 'bf_sale')
+		{
+			if($arr_todays_promotion_info['sub_d_num'] > 0)
+			{
+				$is_todays_bf_sale = 1;
+				//echo $is_todays_bf_sale."<br />";
+			}
+		}
+		else if($arr_todays_promotion_info['d_type'] == 's_free')
+		{
+			$is_todays_shipping_free = 9999999;
+		}
+	}
+
+	$arr_price_info = func_get_price_v2($row['g_cost'], $row['g_cost_h'], $row['tax_percent'], $row['tax_percent_h'], $row['shipping_fee'], $row['shipping_fee_h'], $row['normal_sale_rate'], $margin_rate_n, $exchange_rate, $exchange_rate_krw_cny, 0, $row['g_uid'], $row['sl_uid'], $row['c_value'], $row['site_code'], $row['b_code'], 0, 0, 0, 0, '', $row['is_fixed_price'], $row['fixed_price_info']);
+
+	if($is_todays_bf_sale==1 || $is_todays_shipping_free==9999999)
+	{
+		if($is_todays_shipping_free == 9999999)
+		{
+			$rmb_discount_num = $is_todays_shipping_free;
+		}
+		else
+		{
+			$rmb_discount_num = $arr_todays_promotion_info['sub_d_num'];
+			if($arr_todays_promotion_info['dot_percent_num'] > 0)
+			{
+				$rmb_discount_num = round($arr_price_info['sp_bf_selling_price']*$arr_todays_promotion_info['dot_percent_num']);
+			}
+		}
+		$arr_price_info = func_get_price_v2($row['g_cost'], $row['g_cost_h'], $row['tax_percent'], $row['tax_percent_h'], $row['shipping_fee'], $row['shipping_fee_h'], $row['normal_sale_rate'], $margin_rate_n, $exchange_rate, $exchange_rate_krw_cny, 0, $row['g_uid'], $row['sl_uid'], $row['c_value'], $row['site_code'], $row['b_code'], 0, $rmb_discount_num, 0, 0, '', $row['is_fixed_price'], $row['fixed_price_info']);
+	}
+
+	$normal_price = $arr_price_info['normal_price'];
+	$link = "/shop/goods_detail.html?pid={$row['g_uid']}&n={$row['n_code']}&{$parameter}";
+	$g_uid = $row['g_uid'];
+	$iframe_html_gf .= "
+		\$arr_iframe_gf['{$g_uid}']['link'] = \"{$link}\";
+		\$arr_iframe_gf['{$g_uid}']['n_price'] = {$normal_price};
+		\$arr_iframe_gf['{$g_uid}']['s_price'] = {$arr_price_info['sp_bf_selling_price']};
+	";
+}
+
+$iframe_html_gf = "<?php
+	\$arr_iframe_gf = array();
+	{$iframe_html_gf}
+?>";
+
+//GuangFa Iframe page Array Price End
+
+$min_brand_goods_ct = 20;
+$arr_br_count = array();
+$br_count_time = (int) date("H");
+$is_br_count_time = 0;
+if($br_count_time == 8)
+{
+	$is_br_count_time = 1;
+}
+$is_br_count_time = 1;
+
+$max_c_count = 2;
+$now_month = date("m");
+$arr_m_skip_ca_summer = array('03','04','05','06','07','08');//남자 부츠 c_code = 1257, 여자슈즈 부츠 c_code = 1177,1178,1179,1180,1181,1183 제외
+$arr_m_skip_ca_summer_2 = array('05','06','07','08');//완전 여름 시즌일때에는 남녀 outwear 제외
+$arr_m_skip_ca_winter = array('10','11','12','01','02');//남녀 반팔/반바지, 수영복, 선글라스, 샌들/슬리퍼  c_code = 1022,1024,1027,1054,1076,1207,1211,1214,1223,1235,1741,1767,1299,1144,1187,1193,1258
+
+$arr_default_skip_c_code = array(1089,1090,1091,1092,1093,1096,1097,1746,1772,1773,1774,1775,1776,1767,1741);
+$arr_summer_skip_c_code = array();
+$arr_summer_skip_b_code = array();
+$arr_winter_skip_c_code = array();
+if(in_array($now_month, $arr_m_skip_ca_summer))
+{
+	$arr_summer_skip_c_code = array(1257,1177,1178,1179,1180,1181,1183,1067,1238,1029,1216,1115,1116,1117,1315,1316,1317,1288);//여름 시즌에 남.녀 부츠 / Puffs / Sweaters / sports winter / 남자 비니 모자 메인에서 제외 함.
+	if(in_array($now_month, $arr_m_skip_ca_summer_2))
+	{
+		$arr_summer_skip_c_code_2 = array(1066,1738,1068,1069,1071,1006,1013,1019,1025,1077,1201,1204,1203,1237,1239,1240,1241,1221,1764,1208,1212); //완전 여름 시즌일때에는 남녀 Suits / outwear / Hoodies Jacket / Cardigans / T Long / POLO Long 제외
+		$arr_summer_skip_c_code = array_merge($arr_summer_skip_c_code,$arr_summer_skip_c_code_2);
+		$arr_summer_skip_c_code = array_unique($arr_summer_skip_c_code);
+		
+		$max_c_count = 3; //제외되는 카테고리가 많기 때문에 카테리별 노출을 최대 3개로 늘려 놓는다.
+	}
+	$arr_summer_skip_b_code = array(4622);
+}
+else if(in_array($now_month, $arr_m_skip_ca_winter))
+{
+	$arr_winter_skip_c_code = array(1022,1024,1027,1054,1076,1207,1211,1214,1223,1235,1741,1767,1299,1144,1187,1193,1258);//겨울 시즌에 남.녀 반팔/반바지, 수영복, 선글라스, 샌들/슬리퍼 메인에서 제외 함.
+}
+$arr_skip_c_code = array_merge($arr_default_skip_c_code,$arr_summer_skip_c_code,$arr_winter_skip_c_code);
+$arr_skip_c_code = array_unique($arr_skip_c_code);
+$not_in_c_code = implode(",",$arr_skip_c_code);
+$not_in_site_code = "24,25,75,99,107,115,131";//24,75,107 = armaniexchange,burberry,blacklabelboutique (메인 이미지 노출 시 문제가 될 수 있는 사이트)  |  25,99,115,123,131 = ebags, 6pm, zappos_brands, zappos_couture (이미지 퀄리티가 안 좋은 사이트)
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	if($not_in_site_code)
+	{
+		$arr_not_in_site_code = explode(",", $not_in_site_code);
+	}
+	
+	if(count($arr_not_in_site_code) > 0)
+	{
+		$arr_not_in_site_code = array_merge($arr_not_in_site_code, $ARR_ONLY_BF_NOT_IN_SITE_CODE);
+		$arr_not_in_site_code = array_unique($arr_not_in_site_code);
+		$not_in_site_code = implode(",", $arr_not_in_site_code);
+	}
+}
+
+$arr_skip_db_b_code = array();
+$arr_cache_skip_b_code = array();
+$query = "SELECT b_code_list FROM {$log_db}.main_cache_skip_b_code_list WHERE uid=1";//메인 노출 상품이 10개 미만 브랜드는 임시로 노출을 하지 않는다.
+if($is_yes_print > 0)
+{
+	echo $query."\n";
+}
+$result = dbQuery($query, $dbconn);
+$row = mysql_fetch_assoc($result);
+if($row['b_code_list'])
+{
+	$arr_skip_db_b_code = explode(",",$row['b_code_list']);
+	//$arr_cache_skip_b_code = $arr_skip_db_b_code;
+}
+
+if(count($arr_cache_skip_b_code)>0 || count($arr_summer_skip_b_code)>0)
+{
+	$arr_cache_skip_b_code = array_merge($arr_cache_skip_b_code,$arr_summer_skip_b_code);
+	if(count($arr_cache_skip_b_code) > 1)
+	{
+		$arr_cache_skip_b_code = array_unique($arr_cache_skip_b_code);
+	}
+}
+$count_skip_b_code = count($arr_cache_skip_b_code);
+$and_not_in_b_code = "";
+if($count_skip_b_code > 0)
+{
+	$not_in_b_code = implode(",",$arr_cache_skip_b_code);
+	$and_not_in_b_code = "AND GB.b_code NOT IN ({$not_in_b_code})";
+}
+unset($arr_summer_skip_b_code);
+unset($arr_cache_skip_b_code);
+
+//남.녀 옷은 노출하지 않는다.
+$arr_optional_site_code = array(59,147,163);//ssense,farfetch,net-a-porter
+$arr_optional_skip_ca = array('1000','1196_1','1196_2','1196_6','1196_7');
+
+$arr_b_code = array();
+// ARR_PREMIER_BRAND_0, ARR_PREMIER_BRAND_1, ARR_PREMIER_BRAND_2 assign COMM_FUNC.inc
+$arr_b_code['0'] = $ARR_PREMIER_BRAND_0;
+$arr_b_code['1'] = $ARR_PREMIER_BRAND_1;
+$arr_b_code['2'] = $ARR_PREMIER_BRAND_2;
+
+
+
+$query = "SELECT b_code FROM {$goods_db}.goods WHERE site_code=182 AND isAvailable=2 GROUP BY b_code";
+if($is_yes_print > 0)
+{
+	echo $query."\n";
+}
+$result = dbQuery($query, $dbconn);
+$arr_add_b_code = array();
+while($row=mysql_fetch_assoc($result))
+{
+	$arr_add_b_code[] = $row['b_code'];
+}
+if(count($arr_add_b_code) > 10)
+{
+	$arr_b_code['3'] = $arr_add_b_code;
+}
+
+
+
+
+
+
+$tmall_img_join_tb = "";
+$tmall_img_join_and = "";
+$tmall_img_fd_value = "";
+if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+{
+	$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+	$tmall_img_join_and = "AND G.g_uid=GIT.g_uid";
+	$tmall_img_fd_value = ", GIT.tmall_url";
+}
+
+$arr_b_code_str = array();
+$arr_tmall_check_g_uid = array();
+$arr_jd_img_key_g_uid = array();
+$arr_jd_img_g_uid = array();
+$arr_yz_img_key_g_uid = array();
+$arr_yz_img_g_uid = array();
+$arr_img_uri_key_names = array();
+$arr_now_stock_no_s_g_color_list = array();
+$arr_now_stock_default_no_s_color = array();
+$arr_now_stock_color_img_list = array();
+$b_code_str_idx = 0;
+$max_view_img_ct = 6;
+$max_b_code_g_uid_ct = 13;
+foreach($arr_b_code AS $arr_value)
+{
+	$in_b_code = implode(",", $arr_value);
+	$query = "
+		SELECT 
+			G.g_uid, G.view_g_uid, G.site_code, G.sl_uid, G.c_value,
+			GB.b_code, GB.b_name
+		FROM {$goods_db}.goods G, {$goods_db}.goods_brand GB
+		WHERE G.b_code=GB.b_code
+		AND G.isAvailable=2
+		AND G.sl_uid=2
+		AND GB.b_code IN ({$in_b_code}) 
+		{$and_not_in_b_code}
+		AND G.site_code NOT IN ({$not_in_site_code})
+		AND G.c_code NOT IN ({$not_in_c_code})
+		ORDER BY G.g_uid DESC
+	";
+	if($is_yes_print > 0)
+	{
+		echo $query."\n";
+	}
+	$result = dbQuery($query, $dbconn);
+	$arr_check_b_code = array();
+	$arr_in_g_uid = array();
+	$arr_check_c_value = array();
+	$is_befe_goods = 0;
+	while($row=mysql_fetch_assoc($result))
+	{
+		if(count($arr_add_b_code) > 0)
+		{
+			if(in_array($row['b_code'], $arr_add_b_code))
+			{
+				$is_befe_goods = 1;
+			}
+		}
+		$un_c_value_count = substr_count($row['c_value'], '1319'); 
+		if($un_c_value_count>0 && $is_befe_goods<1)
+		{
+			continue;
+		}
+		if(in_array($row['view_g_uid'], $arr_display_exception_view_g_uid))
+		{
+			continue;
+		}
+		$is_optional_skip = 0;
+		if(in_array($row['site_code'], $arr_optional_site_code))
+		{
+			foreach($arr_optional_skip_ca AS $optional_skip_ca)
+			{
+				$optional_skip_ca = trim($optional_skip_ca);
+				if(!$optional_skip_ca) continue;
+				$ca_skip_count = substr_count($row['c_value'], $optional_skip_ca); 
+				if($ca_skip_count > 0)
+				{
+					$is_optional_skip = 1;
+					break;
+				}
+			}
+		}
+		if($is_optional_skip == 1)
+		{
+			continue;
+		}
+		$b_code = $row['b_code'];
+		if($is_br_count_time == 1)
+		{
+			$lower_b_name = strtolower($row['b_name']);
+			$br_key = $lower_b_name."^^^".$b_code;
+			$arr_br_count[$br_key] += 1;
+		}
+		if(count($arr_skip_db_b_code) > 0)
+		{
+			if(in_array($b_code, $arr_skip_db_b_code))
+			{
+				continue;
+			}
+		}
+		if(count($arr_check_b_code[$b_code]) >= $max_b_code_g_uid_ct)
+		{
+			continue;
+		}
+		$men_watch_count = substr_count($row['c_value'], '1196_9');
+		$acc_watch_count = substr_count($row['c_value'], '1119_3');
+		if($men_watch_count > 0)
+		{
+			$check_c_value_str = '1196_9';
+		}
+		else if($acc_watch_count > 0)
+		{
+			$check_c_value_str = '1119_3';
+		}
+		else
+		{
+			$check_c_value_str = $row['c_value'];
+		}
+		$check_c_value_str = $b_code."_".$check_c_value_str;
+		$check_c_count = count($arr_check_c_value[$check_c_value_str]);
+		if($check_c_count>$max_c_count && $is_befe_goods<1)
+		{
+			continue;
+		}
+		$arr_check_c_value[$check_c_value_str][] = 1;
+		$arr_check_b_code[$b_code][] = 1;
+		$arr_in_g_uid[] = $row['g_uid'];
+	}
+	unset($arr_check_c_value);
+	unset($arr_check_b_code);
+	if($is_yes_print > 1)
+	{
+		print_r($arr_in_g_uid);
+	}
+	$is_select_in_g_uid = 0;
+	if(count($arr_in_g_uid)>200 || $is_befe_goods>0)	
+	{
+		$is_select_in_g_uid = 1;
+		$query = "
+			SELECT 
+				G.g_uid, G.view_g_uid, G.img_cache_num, G.img_host, G.site_code, G.sl_uid, G.g_title, G.tmall_img_uri, G.g_cost, G.g_cost_h, G.tax_percent, G.tax_percent_h, G.shipping_fee, G.shipping_fee_h, G.normal_sale_rate, G.is_new_img, G.n_code, G.c_value, G.color_ct, G.is_fixed_price, G.fixed_price_info,
+				GI.g_color AS no_s_g_color_list, GI.g_option AS default_no_s_color, GI.is_tmall, GI.is_set AS is_jd, GI.is_yz, GI.color_img_list,
+				GB.b_code, GB.b_name, GB.b_name_cn, GB.b_f_name, GB.margin_rate, GB.is_b_f
+			FROM {$goods_db}.goods G, {$goods_db}.goods_info GI, {$goods_db}.goods_brand GB
+			WHERE G.g_uid=GI.g_uid 
+			AND G.b_code=GB.b_code
+			AND G.g_uid IN (".implode(",",$arr_in_g_uid).") 
+			ORDER BY RAND()
+		";
+	}
+	else
+	{
+		$query = "
+			SELECT 
+				G.g_uid, G.view_g_uid, G.img_cache_num, G.img_host, G.site_code, G.sl_uid, G.g_title, G.tmall_img_uri, G.g_cost, G.g_cost_h, G.tax_percent, G.tax_percent_h, G.shipping_fee, G.shipping_fee_h, G.normal_sale_rate, G.is_new_img, G.n_code, G.c_value, G.color_ct, G.is_fixed_price, G.fixed_price_info,
+				GI.g_color AS no_s_g_color_list, GI.g_option AS default_no_s_color, GI.is_tmall, GI.is_set AS is_jd, GI.is_yz, GI.color_img_list,
+				GB.b_code, GB.b_name, GB.b_name_cn, GB.b_f_name, GB.margin_rate, GB.is_b_f
+			FROM {$goods_db}.goods G, {$goods_db}.goods_info GI, {$goods_db}.goods_brand GB
+			WHERE G.g_uid=GI.g_uid 
+			AND G.b_code=GB.b_code
+			AND G.isAvailable=2
+			AND G.sl_uid=2
+			AND GB.b_code IN ({$in_b_code}) 
+			{$and_not_in_b_code}
+			AND G.site_code NOT IN ({$not_in_site_code})
+			AND G.c_code NOT IN ({$not_in_c_code})
+			ORDER BY G.g_uid DESC
+		";
+	}
+	if($is_yes_print > 0)
+	{
+		echo $query."\n";
+	}
+	unset($arr_in_g_uid);
+	//echo $query."\r\n";
+	$result = dbQuery($query, $dbconn);
+	$num = 0;
+	$arr_check_c_value = array();
+	$arr_check_overlap_b_code = array();
+	unset($query);
+	while($row=mysql_fetch_assoc($result))
+	{
+		$is_befe_goods = 0;
+		if(count($arr_add_b_code) > 0)
+		{
+			if(in_array($row['b_code'], $arr_add_b_code))
+			{
+				$is_befe_goods = 1;
+			}
+		}
+		if($is_select_in_g_uid < 1)
+		{
+			$un_c_value_count = substr_count($row['c_value'], '1319'); 
+			if($un_c_value_count>0 && $is_befe_goods<1)
+			{
+				continue;
+			}
+			if(in_array($row['view_g_uid'], $arr_display_exception_view_g_uid))
+			{
+				continue;
+			}
+			$is_optional_skip = 0;
+			if(in_array($row['site_code'], $arr_optional_site_code))
+			{
+				foreach($arr_optional_skip_ca AS $optional_skip_ca)
+				{
+					$optional_skip_ca = trim($optional_skip_ca);
+					if(!$optional_skip_ca) continue;
+					$ca_skip_count = substr_count($row['c_value'], $optional_skip_ca); 
+					if($ca_skip_count > 0)
+					{
+						$is_optional_skip = 1;
+						break;
+					}
+				}
+			}
+			if($is_optional_skip == 1)
+			{
+				continue;
+			}
+		}
+		$b_code = $row['b_code'];		
+		if($is_br_count_time==1 && $is_select_in_g_uid<1)
+		{
+			$lower_b_name = strtolower($row['b_name']);
+			$br_key = $lower_b_name."^^^".$b_code;
+			$arr_br_count[$br_key] += 1;
+		}
+		if(count($arr_skip_db_b_code)>0 && $is_select_in_g_uid<1)
+		{
+			if(in_array($b_code, $arr_skip_db_b_code))
+			{
+				continue;
+			}
+		}
+		if(count($arr_check_overlap_b_code) > 0)
+		{
+			if(in_array($b_code, $arr_check_overlap_b_code))
+			{
+				continue;
+			}
+		}		
+		$check_b_count = count($arr_b_code_info[$row['b_code']]['img_uri']);
+		if($check_b_count > 6)
+		{
+			continue;
+		}
+		$men_watch_count = substr_count($row['c_value'], '1196_9');
+		$acc_watch_count = substr_count($row['c_value'], '1119_3');
+		if($men_watch_count > 0)
+		{
+			$check_c_value_str = '1196_9';
+		}
+		else if($acc_watch_count > 0)
+		{
+			$check_c_value_str = '1119_3';
+		}
+		else
+		{
+			$check_c_value_str = $row['c_value'];
+		}
+		$check_c_count = count($arr_check_c_value[$check_c_value_str]);
+		if($check_c_count>$max_c_count && $is_befe_goods<1)
+		{
+			continue;
+		}
+		$arr_check_c_value[$check_c_value_str][] = 1;
+		
+		/*
+if($row['is_tmall']>0 && $row['tmall_img_uri'])
+		{
+			$arr_tmall_img_uri = explode("^|",$row['tmall_img_uri']);
+			$tmall_img_host_idx = 1;
+			$tmall_img_uri = $row['tmall_img_uri'];
+			if(count($arr_tmall_img_uri) > 1)
+			{
+				$tmall_img_host_idx = $arr_tmall_img_uri['0'];
+				$tmall_img_uri = $arr_tmall_img_uri['1'];
+			}
+			$full_s_img = $ARR_TMALL_IMG_USE_HOST[$tmall_img_host_idx]."/".$tmall_img_uri.".jpg"."_130x130.jpg";//$ARR_TMALL_IMG_USE_HOST assign COMM_FUNC.inc
+		}
+*/
+		if($row['is_tmall']>0 && $row['tmall_url'])
+		{
+			$full_s_img = $row['tmall_url']."_130x130.jpg";
+		}
+		else
+		{
+			$arr_goods_img = get_goods_img_uri($row['sl_uid'], $row['g_uid'], $row['view_g_uid'], $row['img_cache_num'], $row['img_host']);
+			$full_s_img = $arr_goods_img['0']."130x130".$arr_goods_img['1'];
+		}
+		
+		if($row['margin_rate'])
+		{
+			$margin_rate_n = $row['margin_rate'];
+		}
+		else
+		{
+			$margin_rate_n = $margin_rate;
+		}
+		$arr_price_info = func_get_price_v2($row['g_cost'], $row['g_cost_h'], $row['tax_percent'], $row['tax_percent_h'], $row['shipping_fee'], $row['shipping_fee_h'], $row['normal_sale_rate'], $margin_rate_n, $exchange_rate, $exchange_rate_krw_cny, 0, $row['g_uid'], $row['sl_uid'], $row['c_value'], $row['site_code'], $row['b_code'], 0, 0, 0, 0, '', $row['is_fixed_price'], $row['fixed_price_info']);
+		/* 10% up logic start */
+		$instant_discounted_price = $arr_price_info['sp_bf_selling_price'];
+		if($BF_MARGIN_UP_DOT_P > 0) //$BF_MARGIN_UP_DOT_P assign COMM_FUNC.inc
+		{
+			$arr_margin_up_price_info = func_get_price_v2($row['g_cost'], $row['g_cost_h'], $row['tax_percent'], $row['tax_percent_h'], $row['shipping_fee'], $row['shipping_fee_h'], $row['normal_sale_rate'], $margin_rate_n, $exchange_rate, $exchange_rate_krw_cny, 0, $row['g_uid'], $row['sl_uid'], $row['c_value'], $row['site_code'], $row['b_code'], 0, 0, $BF_MARGIN_UP_DOT_P, 0, '', $row['is_fixed_price'], $row['fixed_price_info']);
+			if($arr_margin_up_price_info['bf_selling_price']<$arr_price_info['bf_selling_price']) $arr_margin_up_price_info['bf_selling_price']=$arr_price_info['bf_selling_price'];
+			if($arr_margin_up_price_info['sp_bf_selling_price']<$arr_price_info['sp_bf_selling_price']) $arr_margin_up_price_info['sp_bf_selling_price']=$arr_price_info['sp_bf_selling_price'];
+			$arr_price_info['bf_selling_price'] = $arr_margin_up_price_info['bf_selling_price'];
+			$arr_price_info['normal_price'] = $arr_price_info['bf_selling_price'];//normal_price->bf_selling_price 시장가 대신 바이파인 가격으로 대체
+			$arr_price_info['sp_bf_selling_price'] = $arr_margin_up_price_info['sp_bf_selling_price'];
+			unset($arr_margin_up_price_info);
+			/*
+			$arr_price_info['bf_selling_price'] = ceil($arr_price_info['bf_selling_price']*$BF_MARGIN_UP_DOT_P);
+			$arr_price_info['normal_price'] = $arr_price_info['bf_selling_price'];//normal_price->bf_selling_price 시장가 대신 바이파인 가격으로 대체
+			$arr_price_info['sp_bf_selling_price'] = ceil($arr_price_info['sp_bf_selling_price']*$BF_MARGIN_UP_DOT_P);
+			*/
+		}
+		/* 10% up logic end */
+		$pre_sale_price = $arr_price_info['sp_bf_selling_price'];
+		//$str_pre_sale_price = number_format($pre_sale_price);
+		$str_pre_sale_price = intval($pre_sale_price);
+		$arr_todays_promotion_info = func_get_todays_promotion_info($row['g_cost'], $row['site_code'], $row['b_code'], $row['c_value']);
+		$is_todays_bf_sale = 0;
+		if($arr_todays_promotion_info['result'] == 1)
+		{
+			$rmb_discount_num = 0;
+			if($arr_todays_promotion_info['d_type'] == 'items')
+			{
+				if($arr_todays_promotion_info['sub_d_num'] > 0)
+				{
+					$row['g_cost'] = $row['g_cost'] - $arr_todays_promotion_info['sub_d_num'];
+				}
+			}
+			else if($arr_todays_promotion_info['d_type'] == 'bf_sale')
+			{
+				if($arr_todays_promotion_info['sub_d_num'] > 0)
+				{
+					$rmb_discount_num = $arr_todays_promotion_info['sub_d_num'];
+					if($arr_todays_promotion_info['dot_percent_num'] > 0)
+					{
+						$rmb_discount_num = round($arr_price_info['sp_bf_selling_price']*$arr_todays_promotion_info['dot_percent_num']);
+					}
+				}
+			}
+			else if($arr_todays_promotion_info['d_type'] == 's_free')
+			{
+				$rmb_discount_num = 9999999;
+			}
+	
+			$arr_price_info = func_get_price_v2($row['g_cost'], $row['g_cost_h'], $row['tax_percent'], $row['tax_percent_h'], $row['shipping_fee'], $row['shipping_fee_h'], $row['normal_sale_rate'], $margin_rate_n, $exchange_rate, $exchange_rate_krw_cny, 0, $row['g_uid'], $row['sl_uid'], $row['c_value'], $row['site_code'], $row['b_code'], 0, $rmb_discount_num, 0, 0, '', $row['is_fixed_price'], $row['fixed_price_info']);
+			
+			/* 10% up logic start */
+			$instant_discounted_price = $arr_price_info['sp_bf_selling_price'];
+			if($BF_MARGIN_UP_DOT_P > 0) //$BF_MARGIN_UP_DOT_P assign COMM_FUNC.inc
+			{
+				$arr_margin_up_price_info = func_get_price_v2($row['g_cost'], $row['g_cost_h'], $row['tax_percent'], $row['tax_percent_h'], $row['shipping_fee'], $row['shipping_fee_h'], $row['normal_sale_rate'], $margin_rate_n, $exchange_rate, $exchange_rate_krw_cny, 0, $row['g_uid'], $row['sl_uid'], $row['c_value'], $row['site_code'], $row['b_code'], 0, $rmb_discount_num, $BF_MARGIN_UP_DOT_P, 0, '', $row['is_fixed_price'], $row['fixed_price_info']);
+				if($arr_margin_up_price_info['bf_selling_price']<$arr_price_info['bf_selling_price']) $arr_margin_up_price_info['bf_selling_price']=$arr_price_info['bf_selling_price'];
+				if($arr_margin_up_price_info['sp_bf_selling_price']<$arr_price_info['sp_bf_selling_price']) $arr_margin_up_price_info['sp_bf_selling_price']=$arr_price_info['sp_bf_selling_price'];
+				$arr_price_info['normal_price'] = $arr_margin_up_price_info['bf_selling_price'];
+				$arr_price_info['sp_bf_selling_price'] = $arr_margin_up_price_info['sp_bf_selling_price'];
+				unset($arr_margin_up_price_info);
+				/*
+				$arr_price_info['normal_price'] = ceil($arr_price_info['bf_selling_price']*$BF_MARGIN_UP_DOT_P);//normal_price->bf_selling_price 시장가 대신 바이파인 가격으로 대체
+				$arr_price_info['sp_bf_selling_price'] = ceil($arr_price_info['sp_bf_selling_price']*$BF_MARGIN_UP_DOT_P);
+				*/
+			}
+			/* 10% up logic end */
+					
+			//$str_pre_sale_price = number_format($arr_price_info['sp_bf_selling_price']);
+			$str_pre_sale_price = intval($arr_price_info['sp_bf_selling_price']);
+		}
+		$normal_price = 0;
+		if($arr_price_info['normal_price'] > $arr_price_info['sp_bf_selling_price'])
+		{
+			$normal_price = intval($arr_price_info['normal_price']);
+		}
+		
+		$arr_b_code_info[$b_code]['img_uri'][] = $full_s_img;		
+		
+		/* 이미지주소 가져오기 start */
+		$arr_full_s_img = array();
+		if($row['color_img_list'])
+		{
+			/* 	모든 이미지주소 가져오기 start */
+			if($row['site_code']==9 && $row['color_img_list'])
+			{
+				$img_tag_count = substr_count($row['color_img_list'], '<img src=`/store/productimages/colors/swatch_');
+				if($img_tag_count > 0)
+				{
+					$is_check_color_view = 1;
+					$row['color_img_list'] = str_replace("<img src=`/store/productimages/colors/swatch_","",$row['color_img_list']);
+					$row['color_img_list'] = str_replace(">","",$row['color_img_list']);
+				}
+			}
+			$arr_color_img_list = explode("***", $row['color_img_list']);//Tan Leather~~0^1^2^3***Beige Leather~~4***Black Leather~~5
+			$arr_temp_full_s_img = array();
+			if(count($arr_color_img_list) > 0)
+			{
+				$arr_stock_check_color = array('nowno');
+				if($row['no_s_g_color_list'])
+				{
+					unset($arr_stock_check_color);
+					$arr_stock_check_color = explode("|", $row['no_s_g_color_list']);
+				}
+				$arr_goods_img = get_goods_img_uri($row['sl_uid'], $row['g_uid'], $row['view_g_uid'], $row['img_cache_num'], $row['img_host']);
+				foreach($arr_color_img_list AS $color_img_list)
+				{
+					$color_img_list = @trim($color_img_list);
+					if(!$color_img_list) continue;
+					$arr_color_img_list_2 =  explode("~~", $color_img_list);
+					//echo("<pre>");print_r($arr_color_img_list_2);echo("</pre>");
+					$color_img_list_2_count = count($arr_color_img_list_2);
+					if($arr_color_img_list_2['1'] == "")
+					{
+						continue;
+					}
+					$no_s_now_g_color = strtolower(func_tmall_str_no_space($arr_color_img_list_2['0'], 1));//func_str_no_space 이함수를 사용하지 않는 이유는 tmall이미지를 사용하기때문에 tmall에서 사용한 똑같은 함수를 사용함.
+					if(!in_array($no_s_now_g_color, $arr_stock_check_color))
+					{
+						continue;
+					}
+					$is_exist_default_img = 0;
+					if($row['default_no_s_color'])
+					{
+						if($row['default_no_s_color'] == $no_s_now_g_color)
+						{
+							$is_exist_default_img = 1;
+						}
+					}
+					if($is_yes_print>1)
+					{
+						echo "BF -  {$no_s_now_g_color} - is_exist_default_img={$is_exist_default_img}<br />";
+					}
+					if(count($arr_color_img_list_2) > 0)
+					{
+						$arr_color_img_list_3 =  explode("^", $arr_color_img_list_2['1']);
+						$img_list_3_num = 0;
+						foreach($arr_color_img_list_3 AS $color_img_list_3)
+						{
+							$color_img_list_3 = @trim($color_img_list_3);
+							if(!$color_img_list_3 && $color_img_list_3!='0') continue;
+							if($color_img_list_3=='0') $img_name_tail="";
+							else $img_name_tail="_".$color_img_list_3;
+							$img_num = $color_img_list_3;
+							if($color_img_list_3<10) $img_num="0".$img_num;
+							if($img_list_3_num < 1)
+							{
+								$img_key = 'b'.$img_num;
+							}
+							else
+							{
+								$img_key = 'z'.$img_num;
+							}
+							if($is_exist_default_img > 0)
+							{
+								$img_key = 'a'.$img_num;
+							}
+							$img_loc_str = $arr_goods_img['1'];
+							if($img_name_tail)
+							{
+								$img_loc_str = str_ireplace(".jpg?","{$img_name_tail}.jpg?",$arr_goods_img['1']);
+							}
+							$arr_temp_full_s_img[$img_key] = $arr_goods_img['0']."[img_size]".$img_loc_str;
+							if($max_view_img_ct>0)
+							{
+								if(count($arr_temp_full_s_img) >= $max_view_img_ct)
+								{
+									break;
+								}
+							}
+							$img_list_3_num++;
+						}
+						unset($arr_color_img_list_3);
+					}
+					if($max_view_img_ct>0)
+					{
+						if(count($arr_temp_full_s_img) >= $max_view_img_ct)
+						{
+							break;
+						}
+					}
+					unset($arr_color_img_list_2);
+				}
+				unset($arr_stock_check_color);
+				unset($arr_goods_img);
+			}
+			unset($arr_color_img_list);
+			if(count($arr_temp_full_s_img) > 0)
+			{
+				ksort($arr_temp_full_s_img);
+				if($is_yes_print>2)
+				{
+					echo "arr_temp_full_s_img=";
+					echo("<pre>");print_r($arr_temp_full_s_img);echo("</pre>");
+				}
+				foreach($arr_temp_full_s_img AS $temp_full_s_img)
+				{
+					$arr_full_s_img[] = $temp_full_s_img;
+				}
+			}
+			unset($arr_temp_full_s_img);
+			/* 	모든 이미지주소 가져오기 end */
+		}
+		if(count($arr_full_s_img) < 1)
+		{
+			/* 	한개 이미지주소 가져오기 start */
+			if($row['tmall_img_uri'])
+			{
+				$arr_tmall_img_uri = explode("^|",$row['tmall_img_uri']);
+				$tmall_img_host_idx = 1;
+				$tmall_img_uri = $row['tmall_img_uri'];
+				if(count($arr_tmall_img_uri) > 1)
+				{
+					$tmall_img_host_idx = $arr_tmall_img_uri['0'];
+					$tmall_img_uri = $arr_tmall_img_uri['1'];
+				}
+				$arr_full_s_img[] = $ARR_TMALL_IMG_USE_HOST[$tmall_img_host_idx]."/".$tmall_img_uri.".jpg"."_[img_size].jpg";//$ARR_TMALL_IMG_USE_HOST assign COMM_FUNC.inc
+			}
+			else if($row['tmall_url'])
+			{
+				$arr_full_s_img[] = $row['tmall_url']."_[img_size].jpg";
+			}
+			else
+			{
+				$arr_goods_img = get_goods_img_uri($row['sl_uid'], $row['g_uid'], $row['view_g_uid'], $row['img_cache_num'], $row['img_host']);
+				if($is_yes_print>2)
+				{
+					echo "arr_goods_img=";
+					echo("<pre>");print_r($arr_goods_img);echo("</pre>");
+				}
+				$arr_full_s_img[] = $arr_goods_img['0']."[img_size]".$arr_goods_img['1'];
+			}
+			/* 	한개 이미지주소 가져오기 end */
+		}
+		/* 이미지주소 가져오기 end */
+		
+		$arr_check_overlap_b_code[] = $b_code;
+		$arr_b_code_str[$b_code_str_idx][$b_code]['b_name'] = $row['b_name'];
+		$arr_b_code_str[$b_code_str_idx][$b_code]['b_f_name'] = $row['b_f_name'];
+		$arr_b_code_str[$b_code_str_idx][$b_code]['b_name_cn'] = $row['b_name_cn'];
+		$arr_b_code_str[$b_code_str_idx][$b_code]['is_b_f'] = $row['is_b_f'];
+		$arr_b_code_str[$b_code_str_idx][$b_code]['img_uri'] = $full_s_img;
+		$arr_b_code_str[$b_code_str_idx][$b_code]['img_uri_list'] = $arr_full_s_img;
+		$arr_b_code_str[$b_code_str_idx][$b_code]['g_uid'] = $row['g_uid'];
+		$arr_b_code_str[$b_code_str_idx][$b_code]['view_g_uid'] = $row['view_g_uid'];
+		$arr_b_code_str[$b_code_str_idx][$b_code]['price'] = $normal_price;
+		$arr_b_code_str[$b_code_str_idx][$b_code]['v_price'] = $str_pre_sale_price;
+		$arr_b_code_str[$b_code_str_idx][$b_code]['m_price'] = round($instant_discounted_price,0);
+		
+		if($IS_USED_TMALL_IMAGE > 0)//$IS_USED_TMALL_IMAGE assign COMM_FUNC.inc
+		{
+			$arr_tmall_check_g_uid[] = $row['g_uid'];
+		}
+		if($IS_USED_JD_IMAGE>0 && $row['is_jd']>0)//$IS_USED_JD_IMAGE assign COMM_FUNC.inc
+		{
+			$arr_jd_img_key_g_uid[$row['g_uid']] = 1;
+		}
+		if($IS_USED_YZ_IMAGE>0 && $row['is_yz']>0)
+		{
+			$arr_yz_img_key_g_uid[$row['g_uid']] = 1;
+		}
+		$arr_now_stock_no_s_g_color_list[$row['g_uid']] = $row['no_s_g_color_list'];
+		$arr_now_stock_default_no_s_color[$row['g_uid']] = $row['default_no_s_color'];
+		$arr_now_stock_color_img_list[$row['g_uid']] = $row['color_img_list'];
+		$arr_img_uri_key_names[$row['g_uid']] = $b_code_str_idx."^".$b_code;
+		/*
+		$b_code_str .= "
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['b_name'] = \"{$row['b_name']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['b_f_name'] = \"{$row['b_f_name']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['b_name_cn'] = \"{$row['b_name_cn']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['is_b_f'] = {$row['is_b_f']};
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['img_uri'][] = \"{$full_s_img}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['g_uid'][] = {$row['g_uid']};
+		";
+		*/
+		$num++;
+	}
+	$b_code_str_idx++;
+	unset($arr_check_c_value);
+	unset($arr_check_overlap_b_code);
+}
+unset($arr_b_code_info);
+unset($arr_display_exception_view_g_uid);
+unset($arr_skip_db_b_code);
+//echo $b_code_str;exit;
+//echo("<pre>");print_r($arr_b_code_str);echo("</pre>");exit;
+$arr_tmall_temp_full_s_img = array();
+$arr_jd_temp_full_s_img = array();
+$arr_yz_temp_full_s_img = array();
+$arr_tmall_check_g_uid = array();//tmall이미지는 거이 없음 그래서 걍 초기화
+if(count($arr_tmall_check_g_uid) > 0)
+{
+	$query_tmall = "
+		SELECT
+			TI.g_uid,
+			TPI.img_type, TPI.url, TPI.url_or_byte_key
+		FROM	
+			{$tmall_db}.tmall_picture_info TPI, {$tmall_db}.tmall_item TI
+		WHERE TPI.g_uid=TI.g_uid
+		AND TI.g_uid IN (".implode(',',$arr_tmall_check_g_uid).")
+		AND TI.api_result_num=7
+		AND TI.is_tmall_use>0
+		AND TI.is_del_img=0
+		ORDER BY TI.g_uid ASC, TPI.position ASC
+	";
+	if($is_yes_print > 0)
+	{
+		echo $query_tmall."\n";
+	}
+	$result_tmall = dbQuery($query_tmall, $dbconn);
+	$img_idx = 0;
+	while($row_tmall=mysql_fetch_assoc($result_tmall))
+	{
+		if(in_array($row_tmall['img_type'], $ARR_ONLY_TMALL_USE_PICTURE_INFO_IMG_TYPE))//$ARR_ONLY_TMALL_USE_PICTURE_INFO_IMG_TYPE assign COMM_FUNC.inc
+		{
+			continue;
+		}
+		if(!$row_tmall['url'])
+		{
+			continue;
+		}
+		if(in_array($row_tmall['g_uid'], $ARR_NOT_USE_TMALL_IMG_G_UID))//$ARR_NOT_USE_TMALL_IMG_G_UID assign COMM_FUNC.inc
+		{
+			continue;
+		}
+		if($arr_now_stock_no_s_g_color_list[$row_tmall['g_uid']])
+		{
+			$arr_stock_check_color = explode("|", $arr_now_stock_no_s_g_color_list[$row_tmall['g_uid']]);
+			if(!in_array($row_tmall['url_or_byte_key'], $arr_stock_check_color))
+			{
+				continue;
+			}
+			unset($arr_stock_check_color);
+		}
+		$img_num = $img_idx;	
+		if($img_idx<10) $img_num="0".$img_idx;
+		$arr_key = explode("___",$row_tmall['url_or_byte_key']);
+		if(count($arr_key) > 1)
+		{
+			$img_key = 's'.$img_num;
+		}
+		else if(preg_match("/still_|_cut/i", $row_tmall['url_or_byte_key']))
+		{
+			$img_key = 'z'.$img_num;
+		}
+		else
+		{
+			$is_exist_default_img = 0;
+			if($arr_now_stock_default_no_s_color[$row_tmall['g_uid']])
+			{
+				$default_no_s_color = $arr_now_stock_default_no_s_color[$row_tmall['g_uid']];
+				$arr_color_img_name = array();
+				if($arr_now_stock_color_img_list[$row_tmall['g_uid']])//Silver Grey Glitter~~0^1^2^3***Multi Sparkle Glitter~~4***Silver Glitter~~5
+				{
+					$arr_color_img_list = explode("***", $arr_now_stock_color_img_list[$row_tmall['g_uid']]);
+					foreach($arr_color_img_list AS $temp_color_img_list)
+					{
+						$temp_color_img_list = @trim($temp_color_img_list);
+						if(!$temp_color_img_list) continue;
+						$arr_temp_color_img_name = explode("~~", $temp_color_img_list);
+						if(count($arr_temp_color_img_name) > 1)
+						{
+							$color_img_key = strtolower(func_tmall_str_no_space($arr_temp_color_img_name['0'], 1));//func_str_no_space 이함수를 사용하지 않는 이유는 tmall이미지를 사용하기때문에 tmall에서 사용한 똑같은 함수를 사용함.
+							if($color_img_key)
+							{
+								$arr_color_img_name[$color_img_key] = $arr_temp_color_img_name['0'];
+							}
+						}
+						unset($arr_temp_color_img_name);
+					}
+					unset($arr_color_img_list);
+				}
+				
+				if(count($arr_color_img_name) > 0)
+				{
+					if($arr_color_img_name[$default_no_s_color])
+					{
+						if($row_tmall['url_or_byte_key'] == $default_no_s_color)
+						{
+							$is_exist_default_img = 1;
+						}
+					}
+				}
+				unset($arr_color_img_name);
+			}
+			if($is_exist_default_img > 0)
+			{
+				$img_key = 'a'.$img_num;
+			}
+			else
+			{
+				$img_key = 'b'.$img_num;
+			}
+		}
+		$row_tmall['url'] = func_tmall_img_uri_replace($row_tmall['url']);
+		$arr_tmall_temp_full_s_img[$row_tmall['g_uid']][$img_key] = $row_tmall['url']."_[img_size].jpg";
+		if($arr_jd_img_key_g_uid[$row_tmall['g_uid']])//tmall에서 이미지를 가져왔다면 굳이jd에서 가져올필요가 없음.
+		{
+			unset($arr_jd_img_key_g_uid[$row_tmall['g_uid']]);
+			unset($arr_yz_img_key_g_uid[$row_tmall['g_uid']]);
+		}
+		if($max_view_img_ct>0)
+		{
+			if(count($arr_tmall_temp_full_s_img[$row_tmall['g_uid']]) >= $max_view_img_ct)
+			{
+				continue;
+			}
+		}
+		$img_idx++;
+	}
+}
+if(count($arr_yz_img_key_g_uid) > 0)
+{
+	foreach($arr_yz_img_key_g_uid AS $g_uid=>$value)
+	{
+		$arr_yz_img_g_uid[] = $g_uid;
+	}
+	$query_yz = "
+		SELECT
+			YPI.g_uid, YPI.is_major, YPI.img_type, YPI.url, YPI.no_s_key, YPI.ori_color_str
+		FROM	
+			{$youzan_db}.youzan_picture_info YPI
+		WHERE YPI.g_uid IN (".implode(',',$arr_yz_img_g_uid).")
+		AND YPI.img_type IN (1,3)
+		AND YPI.is_used_bf=1
+		ORDER BY YPI.g_uid ASC, YPI.position ASC
+	";
+	$result_yz = dbQuery($query_yz, $dbconn);
+	while($row_yz=mysql_fetch_assoc($result_yz))
+	{
+		$arr_no_s_key = explode("___",$row_yz['no_s_key']);
+		if($arr_no_s_key['0'] === 'dpbfmainimg')
+		{
+			$no_s_color_str = $arr_no_s_key['0'];
+		}
+		else
+		{
+			$no_s_color_str = strtolower(func_tmall_str_no_space($row_yz['ori_color_str'], 1));//func_str_no_space 이함수를 사용하지 않는 이유는 tmall이미지를 사용하기때문에 tmall에서 사용한 똑같은 함수를 사용함.
+		}
+		if($no_s_color_str)
+		{
+			if($arr_yz_temp_full_s_img[$row_yz['g_uid']][$no_s_color_str]) continue;
+			if($arr_now_stock_no_s_g_color_list[$row_yz['g_uid']])
+			{
+				$arr_stock_check_color = explode("|", $arr_now_stock_no_s_g_color_list[$row_yz['g_uid']]);
+				if(!in_array($no_s_color_str, $arr_stock_check_color))
+				{
+					continue;
+				}
+				unset($arr_stock_check_color);
+			}
+			$row_yz['url'] = str_ireplace("https://","//",$row_yz['url']);
+			$row_yz['url'] = str_ireplace("http://","//",$row_yz['url']);
+			$arr_yz_temp_full_s_img[$row_yz['g_uid']][$no_s_color_str] = $row_yz['url']."!small.jpg";
+			unset($arr_jd_img_key_g_uid[$row_yz['g_uid']]);
+		}
+	}
+}
+if(count($arr_jd_img_key_g_uid) > 0)
+{
+	foreach($arr_jd_img_key_g_uid AS $g_uid=>$value)
+	{
+		$arr_jd_img_g_uid[] = $g_uid;
+	}
+	/*
+	$query_jd = "
+		SELECT
+			JWG.g_uid, JWG.is_mark_img_done, JWG.is_mark_img_2_done,
+			JWP.is_major, JWP.img_host, JWP.img_explode, JWP.url, JWP.color_str
+		FROM	
+			{$jd_db}.jd_ware_picture JWP, {$jd_db}.jd_ware_goods JWG
+		WHERE JWP.g_uid=JWG.g_uid
+		AND JWG.g_uid IN (".implode(',',$arr_jd_img_g_uid).")
+		AND JWG.api_result_num=6
+		AND JWG.is_jd_use=1
+		AND JWG.is_del_img=0
+		AND JWP.is_no_img=0
+		ORDER BY JWG.g_uid ASC, JWP.position ASC
+	";
+	*/
+	$query_jd = "
+		SELECT
+			JWP.g_uid, JWP.is_major, JWP.img_host, JWP.img_explode, JWP.url, JWP.color_str
+		FROM	
+			{$jd_db}.jd_ware_picture JWP
+		WHERE JWP.g_uid IN (".implode(',',$arr_jd_img_g_uid).")
+		AND JWP.is_no_img=0
+		ORDER BY JWP.g_uid ASC, JWP.position ASC
+	";
+	if($is_yes_print > 0)
+	{
+		echo $query_jd."\n";
+	}
+	$result_jd = dbQuery($query_jd, $dbconn);
+	$img_idx = 0;
+	while($row_jd=mysql_fetch_assoc($result_jd))
+	{
+		if(!$row_jd['url'])
+		{
+			continue;
+		}
+		/*
+		if($row_jd['is_mark_img_done']>0 || $row_jd['is_mark_img_2_done']>0)
+		{
+			if($row_jd['is_major'] > 0)//가끔 JD에서 이벤트할때 칼라별 첫메인이미지에 워터마크처럼 이미지를 오버레이 하기때문에 첫번째 이미지를 스킵하기 위함
+			{
+				continue;
+			}
+		}
+		*/
+		$no_s_color_str = strtolower(func_tmall_str_no_space($row_jd['color_str'], 1));//func_str_no_space 이함수를 사용하지 않는 이유는 tmall이미지를 사용하기때문에 tmall에서 사용한 똑같은 함수를 사용함.
+		if($no_s_color_str)
+		{
+			if($arr_jd_temp_full_s_img[$row_jd['g_uid']][$no_s_color_str]) continue;
+			if($arr_now_stock_no_s_g_color_list[$row_jd['g_uid']])
+			{
+				$arr_stock_check_color = explode("|", $arr_now_stock_no_s_g_color_list[$row_jd['g_uid']]);
+				if(!in_array($no_s_color_str, $arr_stock_check_color))
+				{
+					continue;
+				}
+				unset($arr_stock_check_color);
+			}
+			$arr_jd_vars = array(
+				'img_host'=>$row_jd['img_host'],
+				'img_explode'=>$row_jd['img_explode'],
+				'uri'=>$row_jd['url'],
+				'img_wh'=>'[img_size]'
+			);
+			$row_jd['url'] = func_jd_img_uri_replace($arr_jd_vars);
+			unset($arr_jd_vars);
+			$arr_jd_temp_full_s_img[$row_jd['g_uid']][$no_s_color_str] = $row_jd['url'];
+			//unset($arr_yz_img_key_g_uid[$row_jd['g_uid']]);
+		}
+	}
+}
+
+$arr_m_b_code_img_uri = array();
+if(count($arr_tmall_temp_full_s_img) > 0)
+{
+	foreach($arr_tmall_temp_full_s_img AS $g_uid=>$arr_tmall_img)
+	{
+		$arr_keys = explode("^", $arr_img_uri_key_names[$g_uid]);
+		$b_code_str_idx = $arr_keys['0'];
+		$b_code = $arr_keys['1'];
+		if(count($arr_tmall_img) > 0)
+		{
+			ksort($arr_tmall_img);
+			$loop_idx = 0;
+			foreach($arr_tmall_img AS $temp_full_s_img)
+			{
+				$arr_tmall_each_color_img_info[$g_uid][] = $temp_full_s_img;
+				if($loop_idx < 1)
+				{
+					$arr_b_code_str[$b_code_str_idx][$b_code]['img_uri'] = str_ireplace("[img_size]","130x130",$temp_full_s_img);
+				}
+				$arr_m_b_code_img_uri[$b_code_str_idx][$b_code]['img_uri_list'][] = str_ireplace("[img_size]","200x200",$temp_full_s_img);
+				$loop_idx++;
+			}
+		}
+	}
+}
+if(count($arr_jd_temp_full_s_img) > 0)
+{
+	foreach($arr_jd_temp_full_s_img AS $g_uid=>$arr_jd_img)
+	{
+		$arr_keys = explode("^", $arr_img_uri_key_names[$g_uid]);
+		$b_code_str_idx = $arr_keys['0'];
+		$b_code = $arr_keys['1'];
+		if(count($arr_jd_img) > 0)
+		{
+			ksort($arr_jd_img);
+			$loop_idx = 0;
+			foreach($arr_jd_img AS $temp_full_s_img)
+			{
+				$arr_jd_each_color_img_info[$g_uid][] = $temp_full_s_img;
+				if($loop_idx < 1)
+				{
+					$arr_b_code_str[$b_code_str_idx][$b_code]['img_uri'] = str_ireplace("[img_size]","130x130",$temp_full_s_img);
+				}
+				$arr_m_b_code_img_uri[$b_code_str_idx][$b_code]['img_uri_list'][] = str_ireplace("[img_size]","200x200",$temp_full_s_img);
+				$loop_idx++;
+			}
+		}
+	}
+}
+if(count($arr_yz_temp_full_s_img) > 0)
+{
+	foreach($arr_yz_temp_full_s_img AS $g_uid=>$arr_yz_img)
+	{
+		$arr_keys = explode("^", $arr_img_uri_key_names[$g_uid]);
+		$b_code_str_idx = $arr_keys['0'];
+		$b_code = $arr_keys['1'];
+		if(count($arr_yz_img) > 0)
+		{
+			ksort($arr_yz_img);
+			$loop_idx = 0;
+			foreach($arr_yz_img AS $temp_full_s_img)
+			{
+				$arr_jd_each_color_img_info[$g_uid][] = $temp_full_s_img;
+				if($loop_idx < 1)
+				{
+					//$arr_b_code_str[$b_code_str_idx][$b_code]['img_uri'] = str_ireplace("[img_size]","130x130",$temp_full_s_img);
+					$arr_b_code_str[$b_code_str_idx][$b_code]['img_uri'] = $temp_full_s_img;
+				}
+				//$arr_m_b_code_img_uri[$b_code_str_idx][$b_code]['img_uri_list'][] = str_ireplace("[img_size]","200x200",$temp_full_s_img);
+				$arr_m_b_code_img_uri[$b_code_str_idx][$b_code]['img_uri_list'][] = $temp_full_s_img;
+				$loop_idx++;
+			}
+		}
+	}
+}
+
+dbClose($dbconn);
+//print_r($arr_b_code_str);
+//print_r($arr_tmall_temp_full_s_img);
+
+$b_code_str = "<?php
+	\$arr_main_b_code_info = array();
+";
+$mobile_b_code_str = "<?php
+	\$arr_main_b_code_info = array();
+";
+$idx = 0;
+foreach($arr_b_code_str AS $b_code_str_idx=>$arr_value)
+{
+	foreach($arr_value AS $b_code=>$row)
+	{
+		$b_code_str .= "
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['b_name'] = \"{$row['b_name']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['b_f_name'] = \"{$row['b_f_name']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['b_name_cn'] = \"{$row['b_name_cn']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['is_b_f'] = {$row['is_b_f']};
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['img_uri'][] = \"{$row['img_uri']}\";
+			\$arr_main_b_code_info[{$b_code_str_idx}][{$b_code}]['g_uid'][] = {$row['g_uid']};
+		";
+		$mobile_b_code_str .= "
+			\$arr_main_b_code_info[{$idx}]['g_uid'] = {$row['g_uid']};
+			\$arr_main_b_code_info[{$idx}]['view_g_uid'] = \"{$row['view_g_uid']}\";
+			\$arr_main_b_code_info[{$idx}]['b_name'] = \"{$row['b_name']}\";
+			\$arr_main_b_code_info[{$idx}]['price'] = {$row['price']};
+			\$arr_main_b_code_info[{$idx}]['v_price'] = {$row['v_price']};
+			\$arr_main_b_code_info[{$idx}]['m_price'] = {$row['m_price']};
+		";
+		if(count($arr_m_b_code_img_uri[$b_code_str_idx][$b_code]['img_uri_list']) > 0)
+		{
+			$img_idx = 0;
+			foreach($arr_m_b_code_img_uri[$b_code_str_idx][$b_code]['img_uri_list'] AS $list_img)
+			{
+				$mobile_b_code_str .= "\$arr_main_b_code_info[{$idx}]['img_uri_list']['{$img_idx}'] = \"{$list_img}\";\n";
+				$img_idx++;
+			}
+		}
+		else
+		{
+			$img_idx = 0;
+			foreach($row['img_uri_list'] AS $list_img)
+			{
+				$list_img = str_ireplace("130x130","200x200",$list_img);
+				$list_img = str_ireplace("120x120","200x200",$list_img);
+				$list_img = str_ireplace("[img_size]","200x200",$list_img);
+				$mobile_b_code_str .= "\$arr_main_b_code_info[{$idx}]['img_uri_list']['{$img_idx}'] = \"{$list_img}\";\n";
+				$img_idx++;
+			}
+		}
+		$idx++;
+	}
+}
+$b_code_str = $b_code_str."\n?>";
+$mobile_b_code_str = $mobile_b_code_str."\n?>";
+unset($arr_tmall_temp_full_s_img);
+unset($arr_jd_temp_full_s_img);
+unset($arr_yz_temp_full_s_img);
+unset($arr_b_code_str);
+unset($arr_img_uri_key_names);
+unset($arr_now_stock_no_s_g_color_list);
+unset($arr_now_stock_default_no_s_color);
+unset($arr_now_stock_color_img_list);
+unset($arr_tmall_check_g_uid);
+unset($arr_jd_img_key_g_uid);
+unset($arr_jd_img_g_uid);
+unset($arr_yz_img_key_g_uid);
+unset($arr_yz_img_g_uid);
+unset($arr_m_b_code_img_uri);
+
+//echo $b_code_str;
+//echo $mobile_b_code_str;
+//exit;
+
+$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_top_brand.inc";
+write_file($file_loc,$b_code_str);
+unset($b_code_str);
+chown($file_loc, "daemon");
+chgrp($file_loc, "daemon");
+chmod($file_loc, 0775);
+
+$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_mobile_top_brand.inc";
+write_file($file_loc,$mobile_b_code_str);
+unset($mobile_b_code_str);
+chown($file_loc, "daemon");
+chgrp($file_loc, "daemon");
+chmod($file_loc, 0775);
+
+$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_iframe_gf.inc";
+write_file($file_loc,$iframe_html_gf);
+unset($iframe_html_gf);
+chown($file_loc, "daemon");
+chgrp($file_loc, "daemon");
+chmod($file_loc, 0775);
+
+unset($arr_not_in_uid);
+unset($arr_in_pid);
+
+//echo "End";exit;
+
+//print_r($arr_br_count);
+if($is_br_count_time == 1)
+{
+	arsort($arr_br_count);
+	$br_count_str = "";
+	$arr_10_under_b_name = array();
+	$arr_10_under_b_code = array();
+	foreach($arr_br_count AS $br_key=>$br_count)
+	{
+		$br_count_str .= $br_key." = ".number_format($br_count)."\n";
+		if($br_count < $min_brand_goods_ct)
+		{
+			$arr_br_key = explode("^^^",$br_key);
+			$skip_b_name = $arr_br_key['0'];
+			$skip_b_code = $arr_br_key['1'];
+			$is_befe_goods = 0;
+			if(count($arr_add_b_code) > 0)
+			{
+				if(in_array($skip_b_code, $arr_add_b_code))
+				{
+					$is_befe_goods = 1;
+				}
+			}
+			if($is_befe_goods < 1)
+			{
+				$arr_10_under_b_name[] = $skip_b_name;
+				$arr_10_under_b_code[] = $skip_b_code;
+			}
+		}
+	}
+	$count_skip_br = count($arr_10_under_b_code);
+	$dbconn = dbSelect($log_db,dbConn($log_host));
+	$query = "UPDATE {$log_db}.main_cache_skip_b_code_list SET b_code_list='' WHERE uid=1";
+	if($is_yes_print > 0)
+	{
+		echo $query."\n";
+	}
+	dbQuery($query, $dbconn);
+	if($count_skip_br > 0)
+	{
+		sort($arr_10_under_b_name);
+		sort($arr_10_under_b_code);
+		$skip_b_name = implode(", ",$arr_10_under_b_name);
+		$skip_b_code = implode(",",$arr_10_under_b_code);
+		$query = "UPDATE {$log_db}.main_cache_skip_b_code_list SET b_code_list='{$skip_b_code}', update_time=now() WHERE uid=1";
+		if($is_yes_print > 0)
+		{
+			echo $query."\n";
+		}
+		dbQuery($query, $dbconn);
+		$br_count_str .= "\n ***** {$min_brand_goods_ct} under brand ***** \n".$skip_b_name."\n".$skip_b_code;
+	}
+	dbClose($dbconn);
+	/*
+$from_mail = "vip.member@buyfine.net";
+	$from_name = "Alex";
+	$mail_type = "text/plain"; 
+	$to_mail = "alex.yoon@buyfine.net";
+	$mail_subject = "Main Display Brand Each Count";
+	$mail_content = $br_count_str;
+	
+	fsockopen_mail($to_mail,$from_mail,$from_name,$mail_subject,$mail_content,$mail_type);
+*/
+}
+unset($arr_add_b_code);
+
+if($IS_RSYNC_MAIN_CACHE_IP > 0)//$IS_RSYNC_MAIN_CACHE_IP assign COMM_FUNC.inc
+{
+	func_rsync_exec($ARR_RSYNC_MAIN_CACHE_IP, $ARR_RSYNC_MAIN_CACHE_SOURCE, $ARR_RSYNC_MAIN_CACHE_DESTINATION);
+}
+
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo (date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>

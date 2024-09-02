@@ -1,0 +1,266 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+$start_time = time();
+
+/*   
+/usr/local/php/bin/php /home/server/SERVER_SCRIPT/BUYFINE/cache/category_1_2_depth_ct.html &
+*/
+
+$is_need_2_depth = 1;
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+
+$tmall_img_join_tb = "";
+$tmall_img_join_and = "";
+if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+{
+	$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+	$tmall_img_join_and = "AND G.g_uid=GIT.g_uid";
+}
+
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+$not_in_site_code = "";
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	$not_in_site_code = "AND G.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+}
+$not_in_d_parent_c_value = "AND G.d_parent_c_value NOT IN (1885)";
+
+$query = "
+	SELECT
+		COUNT(*) AS ct, G.search_price_num
+	FROM
+		{$goods_db}.goods G{$tmall_img_join_tb}
+	WHERE 1
+	{$tmall_img_join_and}
+	AND G.now_is_sale=1
+	AND G.isAvailable=2
+	AND G.isSoldout=0
+	{$not_in_d_parent_c_value}
+	{$not_in_site_code}
+	GROUP BY G.search_price_num
+	ORDER BY G.search_price_num ASC 
+";
+$result = dbQuery($query,$dbconn);
+$arr_price_c1_ct = array();
+if(isset($result))
+{
+	while($row=mysql_fetch_assoc($result))
+	{
+		$arr_price_c1_ct['sale'][$row['search_price_num']] = $row['ct'];
+	}
+}
+$query = "
+	SELECT 
+		COUNT(*) AS ct, G.search_price_num, G.d_parent_c_value
+	FROM 
+		{$goods_db}.goods G{$tmall_img_join_tb}
+	WHERE 1
+	{$tmall_img_join_and}
+	AND G.isAvailable=2 
+	AND G.isSoldout=0
+	{$not_in_d_parent_c_value}
+	{$not_in_site_code}
+	GROUP BY G.d_parent_c_value, G.search_price_num 
+	ORDER BY G.d_parent_c_value, G.search_price_num ASC
+";
+$result = dbQuery($query,$dbconn);
+dbClose($dbconn);
+if(isset($result))
+{
+	while($row=mysql_fetch_assoc($result))
+	{
+		$arr_price_c1_ct[$row['d_parent_c_value']][$row['search_price_num']] = $row['ct'];
+	}
+}
+sleep(2);
+
+if($is_need_2_depth > 0)
+{
+	$dbconn = dbSelect($goods_db,dbConn($goods_host));
+	$arr_price_c2_ct = array();
+	foreach($arr_price_c1_ct AS $d_parent_c_value=>$ct)
+	{
+		if($d_parent_c_value=='sale') continue;
+		$query = "
+			SELECT 
+				COUNT(*) AS ct, G.search_price_num, G.d_parent_c_value, G.c2_g_num
+			FROM 
+				{$goods_db}.goods G{$tmall_img_join_tb}
+			WHERE 1
+			{$tmall_img_join_and}
+			AND G.d_parent_c_value={$d_parent_c_value}
+			AND G.isAvailable=2 
+			AND G.isSoldout=0
+			{$not_in_d_parent_c_value}
+			{$not_in_site_code}
+			GROUP BY G.c2_g_num, G.search_price_num
+			ORDER BY G.c2_g_num ASC 
+		";
+		//echo $query."\r\n";
+		$result = dbQuery($query,$dbconn);
+		if(isset($result))
+		{
+			while($row=mysql_fetch_assoc($result))
+			{
+				$c2_value = $row['d_parent_c_value']."_".$row['c2_g_num'];
+				$arr_price_c2_ct[$d_parent_c_value][$c2_value][$row['search_price_num']] = $row['ct'];
+			}
+		}
+	}
+	dbClose($dbconn);
+	sleep(2);
+}
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+$query = "
+	SELECT
+		COUNT(*) AS ct, G.search_price_num, G.d_parent_c_value
+	FROM
+		{$goods_db}.goods G{$tmall_img_join_tb}
+	WHERE 1
+	{$tmall_img_join_and}
+	AND G.now_is_sale=1
+	AND G.isAvailable=2
+	AND G.isSoldout=0
+	{$not_in_d_parent_c_value}
+	{$not_in_site_code}
+	GROUP BY G.d_parent_c_value, G.search_price_num
+	ORDER BY G.d_parent_c_value, G.search_price_num ASC 
+";
+$result = dbQuery($query,$dbconn);
+$arr_price_sale_c1_ct = array();
+if(isset($result))
+{
+	while($row=mysql_fetch_assoc($result))
+	{
+		$arr_price_sale_c1_ct[$row['d_parent_c_value']][$row['search_price_num']] = $row['ct'];
+	}
+}
+sleep(2);
+
+if($is_need_2_depth > 0)
+{
+	$dbconn = dbSelect($goods_db,dbConn($goods_host));
+	$arr_price_sale_c2_ct = array();
+	foreach($arr_price_sale_c1_ct AS $d_parent_c_value=>$ct)
+	{
+		$query = "
+			SELECT 
+				COUNT(*) AS ct, G.search_price_num, G.d_parent_c_value, G.c2_g_num
+			FROM 
+				{$goods_db}.goods G{$tmall_img_join_tb}
+			WHERE 1
+			{$tmall_img_join_and}
+			AND G.d_parent_c_value={$d_parent_c_value}
+			AND G.now_is_sale=1
+			AND G.isAvailable=2 
+			AND G.isSoldout=0
+			{$not_in_d_parent_c_value}
+			{$not_in_site_code}
+			GROUP BY G.c2_g_num, G.search_price_num
+			ORDER BY G.c2_g_num ASC 
+		";
+		$result = dbQuery($query,$dbconn);
+		if(isset($result))
+		{
+			while($row=mysql_fetch_assoc($result))
+			{
+				$c2_value = $row['d_parent_c_value']."_".$row['c2_g_num'];
+				$arr_price_sale_c2_ct[$d_parent_c_value][$c2_value][$row['search_price_num']] = $row['ct'];
+			}
+		}
+	}
+	dbClose($dbconn);
+}
+/*
+echo "arr_price_c1_ct=";
+print_r($arr_price_c1_ct);
+echo "arr_price_c2_ct=";
+print_r($arr_price_c2_ct);
+echo "arr_price_sale_c1_ct=";
+print_r($arr_price_sale_c1_ct);
+echo "arr_price_sale_c2_ct=";
+print_r($arr_price_sale_c2_ct);
+*/
+
+$file_include = "";
+if(count($arr_price_c1_ct) > 0)
+{
+	$file_include = "<?php\n\n\$ARR_C1_PRICE_SEARCH_CT = array();\n\$ARR_C2_PRICE_SEARCH_CT = array();\n\$ARR_SALE_C1_PRICE_SEARCH_CT = array();\n\$ARR_SALE_C2_PRICE_SEARCH_CT = array();\n";	
+	$arr_new_arr_value = array();
+	foreach($arr_price_c1_ct AS $d_parent_c_value=>$arr_value_c1_ct)
+	{
+		foreach($arr_value_c1_ct AS $search_price_num=>$ct)
+		{
+			$arr_new_arr_value[] = "\$ARR_C1_PRICE_SEARCH_CT['$d_parent_c_value']['$search_price_num'] = $ct;";
+		}
+	}
+	if($is_need_2_depth > 0)
+	{
+		foreach($arr_price_c2_ct AS $d_parent_c_value=>$arr_value_c2_ct)
+		{
+			foreach($arr_value_c2_ct AS $c2_key=>$arr_value_c3_ct)
+			{
+				foreach($arr_value_c3_ct AS $search_price_num=>$ct)
+				{
+					$arr_new_arr_value[] = "\$ARR_C2_PRICE_SEARCH_CT['$d_parent_c_value']['$c2_key']['$search_price_num'] = $ct;";
+				}
+			}
+		}
+	}
+	foreach($arr_price_sale_c1_ct AS $d_parent_c_value=>$arr_value_c1_ct)
+	{
+		foreach($arr_value_c1_ct AS $search_price_num=>$ct)
+		{
+			$arr_new_arr_value[] = "\$ARR_SALE_C1_PRICE_SEARCH_CT['$d_parent_c_value']['$search_price_num'] = $ct;";
+		}
+	}
+	if($is_need_2_depth > 0)
+	{
+		foreach($arr_price_sale_c2_ct AS $d_parent_c_value=>$arr_value_c2_ct)
+		{
+			foreach($arr_value_c2_ct AS $c2_key=>$arr_value_c3_ct)
+			{
+				foreach($arr_value_c3_ct AS $search_price_num=>$ct)
+				{
+					$arr_new_arr_value[] = "\$ARR_SALE_C2_PRICE_SEARCH_CT['$d_parent_c_value']['$c2_key']['$search_price_num'] = $ct;";
+				}
+			}
+		}
+	}
+	unset($arr_price_c1_ct);
+	unset($arr_price_c2_ct);
+	unset($arr_price_sale_c1_ct);
+	unset($arr_price_sale_c2_ct);
+	if(count($arr_new_arr_value) > 0)
+	{
+		$new_arr_value = implode("\n",$arr_new_arr_value);
+		$file_include = $file_include.$new_arr_value."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_price_search_1_2_depth_ct_cache.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		unset($new_arr_value);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+	}
+	unset($arr_new_arr_value);
+	
+	if($IS_RSYNC_PRICE_SEARCH_12_DEPTH_CT_CACHE_IP > 0)//$IS_RSYNC_PRICE_SEARCH_12_DEPTH_CT_CACHE_IP assign COMM_FUNC.inc
+	{
+		func_rsync_exec($ARR_RSYNC_PRICE_SEARCH_12_DEPTH_CT_CACHE_IP, $ARR_RSYNC_PRICE_SEARCH_12_DEPTH_CT_CACHE_SOURCE, $ARR_RSYNC_PRICE_SEARCH_12_DEPTH_CT_CACHE_DESTINATION);
+	}
+}
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("search price category 1, 2 depth EACH_GOODS_CT (is_need_2_depth={$is_need_2_depth}) - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>

@@ -1,0 +1,588 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+
+include "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_en_navi.inc";
+$ARR_EN_CA_1 = $ARR_CA_1;
+$ARR_EN_CA_2 = $ARR_CA_2;
+$ARR_EN_CA_3 = $ARR_CA_3;
+$ARR_EN_CA_4 = $ARR_CA_4;
+unset($ARR_CA_1);
+unset($ARR_CA_2);
+unset($ARR_CA_3);
+unset($ARR_CA_4);
+include "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_category_navi.inc";
+
+$start_time = time();
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+
+$u_en_s_word = urlencode("特惠");
+
+$ca_s_type = 2;
+$arr_ca1_count = array();
+$arr_ca2_count = array();
+
+$tmall_img_join_tb = "";
+$tmall_img_join_and = "";
+if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+{
+	$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+	$tmall_img_join_and = "AND A.g_uid=GIT.g_uid";
+}
+
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+$not_in_site_code = "";
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	$not_in_site_code = "AND A.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+}
+
+$arr_size_search_ca1 = array();
+$arr_brand_ca_list = array();
+$arr_brand_ca_1_list = array();
+
+$query_ca = "
+	SELECT 
+		COUNT(DISTINCT A.g_uid) AS each_ca_count, CA.c_value, CA.c_name 
+	FROM 
+		{$goods_db}.goods A, {$goods_db}.goods_category CA{$tmall_img_join_tb} 
+	WHERE A.c_code=CA.c_code
+	{$tmall_img_join_and}
+	AND A.now_is_sale=1
+	AND A.isAvailable=2
+	AND A.isSoldout=0
+	{$not_in_site_code}
+	GROUP BY CA.c_code ORDER BY CA.g_num ASC, CA.o_num ASC
+";
+//GROUP BY CA.c_code ORDER BY CA.c_value ASC
+$result_ca = dbQuery($query_ca, $dbconn);
+$c_i = 0;
+while($row_ca=mysql_fetch_assoc($result_ca))
+{
+	$each_ca_count = $row_ca['each_ca_count'];
+	$c_value = $row_ca['c_value'];
+	$arr_c_value = explode("_", $c_value);
+	
+	$c_value_1 = $arr_c_value['0'];
+	if(!$arr_ca1_count[$c_value_1]['t_num']) $arr_ca1_count[$c_value_1]['t_num']=0;
+	$arr_ca1_count[$c_value_1]['t_num'] = $arr_ca1_count[$c_value_1]['t_num']+$each_ca_count;
+	$arr_c_name_1 = func_ca_view($c_value_1);
+	$arr_ca1_count[$c_value_1]['c_name'] = $arr_c_name_1['0'];
+	$arr_c_name_1_en = func_ca_view($c_value_1, 7);
+	$arr_ca1_count[$c_value_1]['c_name_en'] = $arr_c_name_1_en['0'];
+	
+	$depth = count($arr_c_value);
+	if($depth > 1)
+	{
+		$c_value_2 = $arr_c_value['0']."_".$arr_c_value['1'];
+		if(!$arr_ca2_count[$c_value_1][$c_value_2]['t_num']) $arr_ca2_count[$c_value_1][$c_value_2]['t_num']=0;
+		$arr_ca2_count[$c_value_1][$c_value_2]['t_num'] = $arr_ca2_count[$c_value_1][$c_value_2]['t_num']+$each_ca_count;
+		$arr_c_name_2 = func_ca_view($c_value_2);
+		$arr_ca2_count[$c_value_1][$c_value_2]['c_name'] = $arr_c_name_2['1'];
+		$arr_c_name_2_en = func_ca_view($c_value_2, 7);
+		$arr_ca2_count[$c_value_1][$c_value_2]['c_name_en'] = $arr_c_name_2_en['1'];
+		
+		if($arr_c_value['0'] != '1819')
+		{
+			$arr_size_search_ca1[$arr_c_value['0']][$arr_c_value['0']."_".$arr_c_value['1']] = $ARR_CA_2[$arr_c_value['0']][$arr_c_value['0']."_".$arr_c_value['1']];
+		}
+	}
+	
+	$arr_brand_ca_list[$c_i]['depth'] = $depth;
+	$arr_brand_ca_list[$c_i]['id'] = $row_ca['c_value'];
+	$arr_brand_ca_list[$c_i]['total_items'] = $row_ca['each_ca_count'];
+	$arr_brand_ca_1_list[$c_value_1][$c_i]['depth'] = $depth;
+	$arr_brand_ca_1_list[$c_value_1][$c_i]['id'] = $row_ca['c_value'];
+	$arr_brand_ca_1_list[$c_value_1][$c_i]['total_items'] = $row_ca['each_ca_count'];
+	$c_i++;
+}
+//arsort($arr_ca1_count,0);
+
+$ca_num_1 = 1;
+$ca_list_str = "";
+$ca_list_str_en = "";
+$is_ca1_t3 = 0;
+$ca_get_value_str = "";
+$ca_get_value_en_str = "";
+
+$v3_ca_list_str = "";
+$v3_ca_list_str_en = "";
+$v3_ca_get_value_str = "";
+$v3_ca_get_value_en_str = "";
+
+foreach($arr_ca1_count AS $c_key_1=>$arr_c_value_1)
+{
+	$bg_first_str = "";
+	if($ca_num_1 == 1)
+	{
+		$bg_first_str = " first";
+	}
+	
+	if($ca_num_1 == 4)
+	{
+		$is_ca1_t3 = 1;
+		$ca_list_str .= "</table><table align=\"center\" border=\"0\" width=\"734\" style=\"display:none\" id=\"ca_h_table\" class=\"search_tb_class\">";
+		$ca_list_str_en .= "</table><table align=\"center\" border=\"0\" width=\"734\" style=\"display:none\" id=\"ca_h_table\" class=\"search_tb_class\">";
+		
+		//$v3_ca_list_str .= "<div style=\"display:none\" id=\"ca_h_table\">";
+		//$v3_ca_list_str_en .= "<div style=\"display:none\" id=\"ca_h_table\">";
+	}
+	$ca_list_str .= "
+			<tr>
+				<td width=\"145\" align=\"left\" style=\"padding-left:21px;\"><span title=\"{$arr_c_value_1['c_name']} (".number_format($arr_c_value_1['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_1['c_name']} (".number_format($arr_c_value_1['t_num']).")</a></span></td><td width=\"11\"><img src=\"http://image.buyfine.net/images/public/search/separator.gif\" /></td>
+				<td width=\"557\" align=\"center\">
+	";
+	$ca_list_str_en .= "
+			<tr>
+				<td width=\"145\" align=\"left\" style=\"padding-left:21px;\"><span title=\"{$arr_c_value_1['c_name_en']} (".number_format($arr_c_value_1['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_1['c_name_en']} (".number_format($arr_c_value_1['t_num']).")</a></span></td><td width=\"11\"><img src=\"http://image.buyfine.net/images/public/search/separator.gif\" /></td>
+				<td width=\"557\" align=\"center\">
+	";
+	
+	
+	$v3_ca_list_str .= "
+		<dl class=\"schResType{$bg_first_str}\">
+			<dt title=\"{$arr_c_value_1['c_name']} (".number_format($arr_c_value_1['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_1['c_name']} (".number_format($arr_c_value_1['t_num']).")</a></dt>
+			<dd>
+				<ul>
+	";
+	$v3_ca_list_str_en .= "
+		<dl class=\"schResType{$bg_first_str}\">
+			<dt title=\"{$arr_c_value_1['c_name_en']} (".number_format($arr_c_value_1['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_1['c_name_en']} (".number_format($arr_c_value_1['t_num']).")</a></dt>
+			<dd>
+				<ul>
+	";
+	
+	$ca_num_2 = 1;
+	//@arsort($arr_ca2_count[$c_key_1],0);
+	$check_ca2_count = count($arr_ca2_count[$c_key_1]);
+	if($check_ca2_count > 0)
+	{
+		foreach($arr_ca2_count[$c_key_1] AS $c_key_2=>$arr_c_value_2)
+		{
+			/*
+			if($ca_num_2 > 3)
+			{
+				$ca_list_str .= "
+						<span style=\"width:68px;text-align:right;\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">更多</a></span>
+				";
+				$ca_list_str_en .= "
+						<span style=\"width:68px;text-align:right;\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">More</a></span>
+				";
+				break;
+			}
+			else
+			{
+				$ca_list_str .= "
+						<span style=\"width:142px;text-align:left;padding-left:21px;\" title=\"{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")</a></span>
+				";
+				$ca_list_str_en .= "
+						<span style=\"width:142px;text-align:left;padding-left:21px;\" title=\"{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")</a></span>
+				";
+				
+				$v3_ca_list_str .= "
+							<li title=\"{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")</a></li>";
+				$v3_ca_list_str_en .= "
+							<li title=\"{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")</a></li>";
+				
+			}
+			*/
+			
+			$ca_list_str .= "
+					<span style=\"width:142px;text-align:left;padding-left:21px;\" title=\"{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")</a></span>
+			";
+			$ca_list_str_en .= "
+					<span style=\"width:142px;text-align:left;padding-left:21px;\" title=\"{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")</a></span>
+			";
+			
+			$v3_ca_list_str .= "
+						<li title=\"{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name']} (".number_format($arr_c_value_2['t_num']).")</a></li>";
+			$v3_ca_list_str_en .= "
+						<li title=\"{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")\"><a href=\"/search/search_result.html?s_type={$ca_s_type}&c1={$c_key_1}&c2={$c_key_2}&bc=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\">{$arr_c_value_2['c_name_en']} (".number_format($arr_c_value_2['t_num']).")</a></li>";
+							
+			$ca_num_2++;
+		}
+	}
+	$ca_list_str .= "
+				</td>
+			</tr>
+			<tr class=\"bottom_solid\"><td colspan=\"3\"></td></tr>
+	";
+	$ca_list_str_en .= "
+				</td>
+			</tr>
+			<tr class=\"bottom_solid\"><td colspan=\"3\"></td></tr>
+	";
+	
+	$v3_ca_list_str .= "
+				</ul>
+			</dd>
+		</dl>
+	";
+	$v3_ca_list_str_en .= "
+				</ul>
+			</dd>
+		</dl>
+	";
+	$ca_num_1++;
+}
+$ca_get_value_str .= $ca_list_str."</table>";
+$ca_get_value_en_str .= $ca_list_str_en."</table>";
+
+if($ca_num_1 > 4)
+{
+	//$v3_ca_list_str .= "</div>";
+	//$v3_ca_list_str_en .= "</div>";
+}
+$v3_ca_get_value_str .= $v3_ca_list_str;
+$v3_ca_get_value_en_str .= $v3_ca_list_str_en;
+
+/*
+$query_br = "
+	SELECT
+		COUNT(DISTINCT A.g_uid) AS each_br_count, B.b_code, B.b_name, B.b_name_cn
+	FROM
+		{$goods_db}.goods A, {$goods_db}.goods_brand B
+	WHERE A.b_code=B.b_code
+	AND A.now_is_sale=1
+	AND A.isAvailable=2
+	AND A.isSoldout=0
+	GROUP BY B.b_code ORDER BY B.b_name ASC LIMIT 0, 16 
+";
+*/
+// $ARR_PREMIER_BRAND_STR assign COMM_FUNC.inc
+
+$p_rand_idx = rand(0,2);
+if($p_rand_idx =='0')
+{
+	$premier_brand = implode(",",$ARR_PREMIER_BRAND_0);
+}
+else if($p_rand_idx == 1)
+{
+	$premier_brand = implode(",",$ARR_PREMIER_BRAND_1);
+}
+else
+{
+	$premier_brand = implode(",",$ARR_PREMIER_BRAND_2);
+}
+
+// 처음에는 해당 프리미엄 브랜드에서 12개를 가죠온다.
+$query_br = "
+	SELECT
+		COUNT(DISTINCT A.g_uid) AS each_br_count, B.b_code
+	FROM
+		{$goods_db}.goods A, {$goods_db}.goods_brand B{$tmall_img_join_tb}
+	WHERE A.b_code=B.b_code
+	{$tmall_img_join_and}
+	AND A.now_is_sale=1
+	AND A.isAvailable=2
+	AND A.isSoldout=0
+	AND B.b_code IN ({$premier_brand})
+	{$not_in_site_code}
+	GROUP BY B.b_code ORDER BY each_br_count DESC 
+";
+//echo $query_br."\r\n";
+$result_br = dbQuery($query_br, $dbconn);
+$arr_premier_brand = array();
+$br_num_1 = 1; 
+while($row_br=mysql_fetch_assoc($result_br))
+{
+	//브랜드 더보기 버튼 나오게 하기 위해 한개 더 가져온다.
+	if($br_num_1 == 14)
+	{
+		break;
+	}
+	
+	if($row_br['each_br_count'] < 18)
+	{
+		continue;
+	}
+	$arr_premier_brand[] = $row_br['b_code'];
+	$br_num_1++;
+}
+//print_r($arr_premier_brand);
+$count_premier_brand = count($arr_premier_brand);
+//echo $count_premier_brand."\r\n";
+//만약 12개 미만인 경우에는 추가해서 가져온다.
+if($count_premier_brand < 13)
+{
+	$query_br = "
+		SELECT
+			COUNT(DISTINCT A.g_uid) AS each_br_count, B.b_code
+		FROM
+			{$goods_db}.goods A, {$goods_db}.goods_brand B{$tmall_img_join_tb}
+		WHERE A.b_code=B.b_code
+		{$tmall_img_join_and}
+		AND A.now_is_sale=1
+		AND A.isAvailable=2
+		AND A.isSoldout=0
+		AND B.b_code IN ({$ARR_PREMIER_BRAND_STR})
+		{$not_in_site_code}
+		GROUP BY B.b_code ORDER BY each_br_count DESC 
+	";
+	$result_br = dbQuery($query_br, $dbconn);
+	$br_num_1 = $count_premier_brand;
+	while($row_br=mysql_fetch_assoc($result_br))
+	{
+		if($br_num_1 == 14)
+		{
+			break;
+		}
+		
+		if($row_br['each_br_count'] < 18)
+		{
+			continue;
+		}
+		$arr_premier_brand[] = $row_br['b_code'];
+		$br_num_1++;
+	}
+}
+//echo $count_premier_brand."\r\n";
+$count_premier_brand = count($arr_premier_brand);
+//그럴일 없겠지만 혹 못 가져오면 전체 프리미엄 브랜드에서 가져온다.
+if($count_premier_brand < 13)
+{
+	$query_br = "
+		SELECT
+			COUNT(DISTINCT A.g_uid) AS each_br_count, B.b_code, B.b_name, B.b_name_cn
+		FROM
+			{$goods_db}.goods A, {$goods_db}.goods_brand B{$tmall_img_join_tb}
+		WHERE A.b_code=B.b_code
+		{$tmall_img_join_and}
+		AND A.now_is_sale=1
+		AND A.isAvailable=2
+		AND A.isSoldout=0
+		AND B.b_code IN ({$ARR_PREMIER_BRAND_STR})
+		{$not_in_site_code}
+		GROUP BY B.b_code ORDER BY each_br_count DESC LIMIT 0, 16 
+	";
+}
+else
+{
+	//여기서 쿼리를 하면 해당 프리미엄 브랜드 혹은 추가된 브랜드 12개가 노출 된다.
+	$premier_brand = implode(",",$arr_premier_brand);
+	$query_br = "
+		SELECT
+			COUNT(DISTINCT A.g_uid) AS each_br_count, B.b_code, B.b_name, B.b_name_cn
+		FROM
+			{$goods_db}.goods A, {$goods_db}.goods_brand B{$tmall_img_join_tb}
+		WHERE A.b_code=B.b_code
+		{$tmall_img_join_and}
+		AND A.now_is_sale=1
+		AND A.isAvailable=2
+		AND A.isSoldout=0
+		AND B.b_code IN ({$premier_brand})
+		{$not_in_site_code}
+		GROUP BY B.b_code ORDER BY each_br_count DESC LIMIT 0, 16 
+	";
+}
+unset($arr_premier_brand);
+$result_br = dbQuery($query_br, $dbconn);
+$br_num_1 = 1;
+$br_list_str = "";
+$is_br_t15 = 0;
+
+$v3_br_list_str = "";
+$v3_is_br_t15 = 0;
+while($row_br=mysql_fetch_assoc($result_br))
+{
+	if($br_num_1 == 13)
+	{
+		$v3_is_br_t15 = 1;
+	}
+	
+	if($br_num_1 == 16)
+	{
+		$is_br_t15 = 1;
+		break;
+		$br_list_str .= "
+		</table>
+		<table align=\"center\" border=\"0\" width=\"734\" style=\"display:none\" id=\"br_h_table\" class=\"search_br_tb_class\">
+		<tr><td width=\"734\">
+		";
+	}
+	
+	$bold_str = "";
+	$v3_bold_str = "";
+	//ARR_PREMIER_BRAND assign COMM_FUNC.inc
+	if($row_br['each_br_count']>67 || (in_array($row_br['b_code'],$ARR_PREMIER_BRAND)))
+	{
+		$bold_str = " style=\"color:#b08752;font-weight:bold;\"";
+		//$v3_bold_str = " style=\"font-weight:bold;\"";
+		//$v3_bold_str = " style=\"color:#D27E93;\"";
+	}
+
+	$b_name = $row_br['b_name'];
+	if($row_br['b_name_cn'])
+	{
+		$b_name = $row_br['b_name_cn']." ".$b_name;
+	}
+		
+	$br_list_str .= "
+		<span style=\"width:136px;text-align:left;padding-left:10px;\" title=\"{$b_name} (".number_format($row_br['each_br_count']).")\"><a href=\"/search/search_result.html?s_type=3&bc={$row_br['b_code']}&c1=&c2=&c3=&c4=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\"{$bold_str}>{$b_name} (".number_format($row_br['each_br_count']).")</a></span>
+	";
+	
+	if(!$v3_is_br_t15)
+	{
+		$v3_br_list_str .= "<li title=\"{$b_name} (".number_format($row_br['each_br_count']).")\"><a href=\"/search/search_result.html?s_type=3&bc={$row_br['b_code']}&c1=&c2=&c3=&c4=&minP=&maxP=&spMinP=&spMaxP=&irs=&s_word={$u_en_s_word}&h_s_word=&sortStr=new\"{$v3_bold_str}>{$b_name} (".number_format($row_br['each_br_count']).")</a></li>";
+	}
+	
+	$zero_br_num = $br_num_1 % 5;
+	if($zero_br_num =='0')
+	{
+		if($br_num_1 == 15)
+		{
+			$br_list_str .= "
+			</td>
+			</tr>
+			<tr class=\"bottom_solid\"><td width=\"734\"></td></tr>
+			";
+		}
+		else
+		{
+			$br_list_str .= "
+			</td>
+			</tr>
+			<tr class=\"bottom_solid\"><td width=\"734\"></td></tr>
+			<tr><td width=\"734\">
+			";
+		}
+	}
+	else
+	{
+	}
+	$br_num_1++;
+}
+
+if($is_br_t15 =='0')
+{
+	$br_list_str = $br_list_str."</td></tr>";
+}
+
+$arr_new_size_search_ca1 = array();
+foreach($arr_size_search_ca1 AS $size_ca1=>$arr_size_c2)
+{
+	$arr_new_size_search_ca2 = array();
+	foreach($arr_size_c2 AS $size_ca2_key=>$size_ca2_value)
+	{
+		$arr_new_size_search_ca2[] = "'{$size_ca2_key}'=>'{$size_ca2_value}'";
+	}
+	
+	$count_new_arr_ca2 = count($arr_new_size_search_ca2);  
+	if($count_new_arr_ca2 > 0)
+	{
+		$new_size_search_ca2 = implode(",",$arr_new_size_search_ca2);
+		$arr_new_size_search_ca1[] = "'{$size_ca1}'=>array({$new_size_search_ca2})";	
+	}
+	unset($arr_new_size_search_ca2);
+}
+$count_new_arr_ca1 = count($arr_new_size_search_ca1);  
+$new_size_search_ca1 = "";
+if($count_new_arr_ca1 > 0)
+{
+	$new_size_search_ca1 = implode(",",$arr_new_size_search_ca1);
+}
+unset($arr_new_size_search_ca1);
+
+$v3_cache_str = "<?
+	\$cache_ca_get_value_str = '{$v3_ca_get_value_str}';
+	\$cache_ca_get_value_en_str = '{$v3_ca_get_value_en_str}';
+	\$is_ca1_t3 = 0;
+	
+	\$cache_br_list_str = '{$v3_br_list_str}';
+	\$cache_is_br_t15 = {$v3_is_br_t15};
+	\$arr_size_search_ca1 = array({$new_size_search_ca1});
+?>";
+
+$cache_str = "<?
+	\$cache_ca_get_value_str = '{$ca_get_value_str}';
+	\$cache_ca_get_value_en_str = '{$ca_get_value_en_str}';
+	\$is_ca1_t3 = {$is_ca1_t3};
+	
+	\$cache_br_list_str = '{$br_list_str}';
+	\$cache_is_br_t15 = {$is_br_t15};
+	\$arr_size_search_ca1 = array({$new_size_search_ca1});
+?>";
+unset($ca_get_value_str);
+unset($ca_get_value_en_str);
+unset($ca_list_str);
+unset($ca_list_str_en);
+unset($v3_ca_get_value_str);
+unset($v3_ca_get_value_en_str);
+unset($v3_ca_list_str);
+unset($v3_ca_list_str_en);
+unset($arr_ca1_count);
+unset($arr_ca2_count);
+unset($br_list_str);
+unset($arr_size_search_ca1);
+
+dbClose($dbconn);
+
+$v3_file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/cache/search_sale_ca_br.inc";
+write_file($v3_file_loc,$v3_cache_str);
+unset($v3_cache_str);
+chown($v3_file_loc, "daemon");
+chgrp($v3_file_loc, "daemon");
+chmod($v3_file_loc, 0775);
+
+if(count($arr_brand_ca_list) > 0)
+{
+	$file_include = "<?php\n\$ARR_SALE_CA_CT = array();\n\$ARR_SALE_CA_1_CT = array();\n";	
+	$arr_new_arr_value = array();
+	foreach($arr_brand_ca_list AS $key=>$arr_value)
+	{
+		$arr_new_arr_value[] = "\$ARR_SALE_CA_CT['{$key}']['depth'] = {$arr_value['depth']};";
+		$arr_new_arr_value[] = "\$ARR_SALE_CA_CT['{$key}']['id'] = '{$arr_value['id']}';";
+		$arr_new_arr_value[] = "\$ARR_SALE_CA_CT['{$key}']['total_items'] = {$arr_value['total_items']};";
+	}
+	//$arr_brand_ca_1_list[$c_value_1][$c_i]['depth'] = $depth;
+	ksort($arr_brand_ca_1_list);
+	foreach($arr_brand_ca_1_list AS $c1=>$arr_value)
+	{
+		$c_i = 0;
+		foreach($arr_value AS $key=>$arr_1_value)
+		{
+			$arr_new_arr_value[] = "\$ARR_SALE_CA_1_CT['{$c1}']['{$c_i}']['depth'] = {$arr_1_value['depth']};";
+			$arr_new_arr_value[] = "\$ARR_SALE_CA_1_CT['{$c1}']['{$c_i}']['id'] = '{$arr_1_value['id']}';";
+			$arr_new_arr_value[] = "\$ARR_SALE_CA_1_CT['{$c1}']['{$c_i}']['total_items'] = {$arr_1_value['total_items']};";
+			$c_i++;
+		}
+	}
+	if(count($arr_new_arr_value) > 0)
+	{
+		$new_arr_value = implode("\n",$arr_new_arr_value);
+		$file_include = $file_include.$new_arr_value."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/cache/search_sale_ca_ct.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		unset($new_arr_value);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+		
+		if($IS_RSYNC_SEARCH_SALE_CA_CT_IP > 0)//$IS_RSYNC_SEARCH_SALE_CA_CT_IP assign COMM_FUNC.inc
+		{
+			func_rsync_exec($ARR_RSYNC_SEARCH_SALE_CA_CT_IP, $ARR_RSYNC_SEARCH_SALE_CA_CT_SOURCE, $ARR_RSYNC_SEARCH_SALE_CA_CT_DESTINATION);
+		}
+	}
+	unset($arr_new_arr_value);
+}
+unset($arr_brand_ca_list);
+
+if($IS_RSYNC_SEARCH_SALE_STR_CACHE_IP > 0)//$IS_RSYNC_SEARCH_SALE_STR_CACHE_IP assign COMM_FUNC.inc
+{
+	func_rsync_exec($ARR_RSYNC_SEARCH_SALE_STR_CACHE_IP, $ARR_RSYNC_SEARCH_SALE_STR_CACHE_SOURCE, $ARR_RSYNC_SEARCH_SALE_STR_CACHE_DESTINATION);
+}
+
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("Search sale - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+///usr/local/php/bin/php /home/server/SERVER_SCRIPT/BUYFINE/cache/search_sale_ca_br_list.html &
+?>         

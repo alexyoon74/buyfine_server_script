@@ -1,0 +1,170 @@
+<?
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include_once "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include_once "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include_once "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+if(!$IS_WECHAT_CONFIG) include_once "PUBLIC_FUNC/ADMIN_V2/wechat/config.inc";
+if(!$IS_FUNC_WECHAT_CORE) include_once "PUBLIC_FUNC/ADMIN_V2/wechat/func_wechat_core.inc";
+function in_func_mb_str_json_encode($arr)
+{
+    //PHP 5.4이상일 경우 
+    //json_encode($arr, JSON_UNESCAPED_UNICODE);
+    //convmap since 0x80 char codes so it takes all multibyte codes (above ASCII 127). So such characters are being "hidden" from normal json_encoding
+    array_walk_recursive($arr, function (&$item, $key) { if (is_string($item)) $item = mb_encode_numericentity($item, array (0x80, 0xffff, 0, 0xffff), 'UTF-8'); });
+    return mb_decode_numericentity(json_encode($arr), array (0x80, 0xffff, 0, 0xffff), 'UTF-8');
+}
+
+/*   
+/usr/local/php/bin/php /home/server/SERVER_SCRIPT/BUYFINE/wechat/message/buyingAdminCheckMsg.html &
+OR
+/usr/local/php/bin/php /home/server/SERVER_SCRIPT/BUYFINE/wechat/message/buyingAdminCheckMsg.html ea_uid,ea_uid &
+*/
+$execution_file = "buyingAdminCheckMsg";
+$start_time = time();
+$is_yes_print = 0;
+$is_db_update = 1;
+$in_ea_uid = "";
+foreach($argv AS $key=>$value)
+{
+	if(!$value) continue;
+	if($key =='0') 
+	{
+		continue;
+	}
+	else if($key == 1)
+	{
+		$value = @trim($value);
+		if($value)
+		{
+			$in_ea_uid = $value;	
+			$is_yes_print = 1;
+		}
+	}
+}
+
+$dbconn = dbSelect($payment_db,dbConn($payment_host));
+
+/* Get sessionkey Key start  */
+$arr_proc_uid_info = func_get_wechat_proc_uid(1, 0, 1, 0, $dbconn); //$uid=1, $sleep_num=0, $is_already_dbconn=0, $connIsPDO=0, $dbconn="" | func_get_wechat_proc_uid assign func_wechat_core.inc
+if($is_yes_print > 0)
+{
+	print_r($arr_proc_uid_info);
+}
+$wechat_sessionkey = $arr_proc_uid_info['sessionkey'];
+//echo $wechat_sessionkey;exit;
+/* Get sessionkey Key end  */
+$arr_api_url = parse_url($wx_msg_api_uri);//$wx_msg_api_uri assign wechat/config.inc
+if($is_yes_print > 0)
+{
+	//print_r($arr_api_url);
+}
+$get_url = $arr_api_url['host'];
+$get_page = $arr_api_url['path']."?access_token={$wechat_sessionkey}"; 
+
+$api_md5_key = $bf_admin_md5_key;//assign wechat/config.inc
+$api_sessin_key = $bf_admin_api_sessin_key;//$ARR_API_V2_SESSION_KEY assign api/config.inc
+$api_sign_key = MD5E($api_sessin_key, $api_md5_key);
+$en_ruri = urlencode("https://admin.buyfine.net/auth/gate.html");
+$en_ruri2 = urlencode("https://admin.buyfine.net/payment/buying_list.html");
+$en_api_sign_key = urlencode($api_sign_key);
+unset($api_sessin_key);
+
+$and_default = "AND PE.is_sent_wx_msg IN (0,1)";
+if($in_ea_uid)
+{
+	$and_default = "AND PE.ea_uid IN (".$in_ea_uid.")";
+}
+$query = "
+	SELECT
+		PE.ea_uid, PE.is_hold, PE.is_agency_view, PE.is_sent_wx_msg
+	FROM
+		{$payment_db}.payment_v2_each PE, {$payment_db}.payment_v2 P
+	WHERE P.pa_uid=PE.pa_uid
+	{$and_default}
+	AND PE.pa_status=2
+	AND PE.bt_uid=0
+	AND P.isAvailable=1
+	AND PE.ea_uid<4294899347
+	AND PE.m_uid NOT IN ({$ADMIN_NOT_IN_M_UID_STR})
+";
+if($is_yes_print>0) echo($query."\n");
+$result = dbQuery($query, $dbconn);
+dbClose($dbconn);
+$arr_done_ea_uid = array();
+$arr_is_sent_wx_msg = array();
+while($row=mysql_fetch_assoc($result))
+{
+	if($row['is_hold']>0) continue;
+	if($row['is_agency_view']<1) continue;
+	$arr_done_ea_uid[] = $row['ea_uid'];
+	$arr_is_sent_wx_msg[$row['ea_uid']] = $row['is_sent_wx_msg'];
+}
+$t_num = count($arr_done_ea_uid);
+$s_num = 0;
+if($t_num > 0)
+{
+	foreach($arr_bf_admin_wx_msg_openId AS $bf_admin_id=>$wx_openId)
+	{
+		$api_id_key = MD5E($bf_admin_id, $api_md5_key);
+		$en_api_id_key = urlencode($api_id_key);
+		$go_link_value = "https://wechat.buyfine.net/work/auth_gate.html?r_uri={$en_ruri}&r_uri2={$en_ruri2}&sk={$en_api_sign_key}&sk2={$en_api_id_key}";
+		if($is_yes_print > 0)
+		{
+			echo $go_link_value."\n";
+		}
+		$arr_api_data = array();
+		$arr_api_data['touser'] = $wx_openId;
+		$arr_api_data['msgtype'] = 'text';
+		$arr_api_data['text']['content'] = '바잉 어드민 대기 : '.$t_num.'
+Date : '.date("y-m-d H:i:s").'
+<a href="'.$go_link_value.'">[GoGoGo]</a>';//admin.buyfine.net으로 바로 하면 좋은데 wechat openId를 가져오려면 도메인등록을 해야하는데 이미 다 사용하고 있어서 wechat.buyfine.net연결함.
+		$post_data = in_func_mb_str_json_encode($arr_api_data);
+		unset($arr_api_data);
+		$tmp_body = post_ssl_result($get_url, $get_page, $post_data);
+		if($is_yes_print > 0)
+		{
+			echo "post_data = ".$post_data."\r\n";
+			echo "tmp_body = ".$tmp_body."\r\n";
+		}
+		$headerend = strpos($tmp_body,"\r\n\r\n");
+		if (is_bool($headerend)) {
+			$result_data = $tmp_body;
+		} 
+		else {
+			$result_data = substr($tmp_body,$headerend+4,strlen($tmp_body) - ($headerend+4));
+		}
+		$result_data = trim($result_data);
+		if($is_yes_print > 0)
+		{
+			echo "result_data = ".$result_data."\r\n";
+		}
+		if($result_data)
+		{
+			$arr_json_decode = json_decode($result_data, true, 512);
+			if($is_yes_print > 0)
+			{
+				echo "arr_json_decode = ";
+				print_r($arr_json_decode);
+			}
+			$s_num++;
+			unset($arr_json_decode);
+		}
+		sleep(1);
+	}
+}
+if($s_num > 0)
+{
+	$dbconn = dbSelect($payment_db,dbConn($payment_host));
+	$query = "UPDATE {$payment_db}.payment_v2_each SET is_sent_wx_msg=is_sent_wx_msg+1 WHERE ea_uid IN (".implode(",",$arr_done_ea_uid).")";
+	if($is_yes_print>0) echo($query."\n");
+	if($is_db_update>0) dbQuery($query, $dbconn);
+	dbClose($dbconn);
+}
+$t_err_num = $t_num-$s_num;
+
+$end_time = time(); 
+$run_time = $end_time - $start_time;
+
+echo $execution_file." : ".date("Y-m-d H:i:s")." -> RunTime={$run_time}, is_db_update={$is_db_update}, Total={$t_num}, Success={$s_num}, T_Err={$t_err_num} End\r\n";
+?>

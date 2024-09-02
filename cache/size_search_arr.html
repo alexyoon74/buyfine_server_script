@@ -1,0 +1,265 @@
+<?php
+set_time_limit(0);
+mb_internal_encoding("UTF-8");
+if(!$INCLUDE_COMM) include "PUBLIC_FUNC/ADMIN_V2/COMM_FUNC.inc";
+if(!$IS_FUNC_CORE) include "PUBLIC_FUNC/ADMIN_V2/func_core.inc";
+if(!$IS_FUNC_EXTRA) include "PUBLIC_FUNC/ADMIN_V2/func_extra.inc";
+
+$start_time = time();
+
+$dbconn = dbSelect($goods_db,dbConn($goods_host));
+
+$tmall_img_join_tb = "";
+$tmall_img_join_and = "";
+if($IS_USE_TMALL_FULL_IMG > 0) // $IS_USE_TMALL_FULL_IMG assign COMM_FUNC.inc
+{
+	$tmall_img_join_tb = ", {$goods_db}.goods_img_tmall GIT";
+	$tmall_img_join_and = "AND A.g_uid=GIT.g_uid";
+}
+
+if(count($ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE) > 0)// $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE assign COMM_FUNC.inc
+{
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_merge($ARR_ONLY_BF_NOT_IN_SITE_CODE, $ARR_ONLY_BF_TEST_NOT_IN_SITE_CODE);
+	$ARR_ONLY_BF_NOT_IN_SITE_CODE = array_unique($ARR_ONLY_BF_NOT_IN_SITE_CODE);
+}
+$not_in_site_code = "";
+if(count($ARR_ONLY_BF_NOT_IN_SITE_CODE) > 0)
+{
+	$not_in_site_code = "AND A.site_code NOT IN (".implode(",",$ARR_ONLY_BF_NOT_IN_SITE_CODE).")";
+}
+
+$arr_size_search_cache_ca2 = array();
+$arr_sale_size_search_cache_ca2 = array();
+
+$query_t = "SELECT c_value FROM  {$goods_db}.goods_category WHERE is_size_search_view=1 AND is_view=1 AND d_num IN (2) ORDER BY c_value ASC ";
+$result_t = dbQuery($query_t,$dbconn);
+while($row_t=mysql_fetch_assoc($result_t))
+{
+	$skip_c_value_count = substr_count($row_t['c_value'], '1819');
+	if($skip_c_value_count>0)
+	{
+		continue;
+	}
+	
+	$arr_c_value = explode("_", $row_t['c_value']);
+	$c1 = $arr_c_value['0'];
+	$c2 = $arr_c_value['1'];
+	$dt_count = count($arr_c_value);
+	
+	$ca_join_table = "";
+	$ca_join_and = "";
+	if($c1 && $c2)
+	{
+		$ca_str2 = $row_t['c_value'];
+		$ca_and_str = func_ca_query_and_str($row_t['c_value']);
+	}
+	else
+	{
+		$ca_join_table = "";
+		$ca_join_and = "";
+		$ca_and_str = func_ca_query_and_str($c1);
+	}	
+	
+	$size_search_and_sl_uid = "AND A.sl_uid=2";
+	if($row_t['c_value'] == '1319_5')
+	{
+		$size_search_and_sl_uid = "";
+	}
+	
+	/************** 2dept category cache start **************/
+	$query_size = "
+		SELECT 
+			COUNT(DISTINCT(GSS.g_uid)) AS ss_count, GSS.g_c_size
+		FROM 
+			{$goods_db}.goods_size_search_{$c1} GSS, {$goods_db}.goods A{$tmall_img_join_tb}{$ca_join_table}
+		WHERE GSS.g_uid=A.g_uid
+		{$tmall_img_join_and}
+		{$ca_join_and}
+		AND A.isAvailable=2 
+		AND A.isSoldout=0
+		{$size_search_and_sl_uid}
+		{$ca_and_str}
+		{$not_in_site_code}
+		GROUP BY GSS.g_c_size ORDER BY GSS.g_c_size ASC
+	";
+	//echo $query_size."\r\n";
+	$result_size = dbQuery($query_size,$dbconn);
+	while($row_size=mysql_fetch_assoc($result_size))
+	{
+		$arr_size_search_cache_ca2[$c1][$row_t['c_value']][] = $row_size['g_c_size']."^|".$row_size['ss_count'];
+	}
+	/************** 2dept category cache end **************/
+	
+	/************** 2dept sale-category cache start **************/
+	$query_sale_size = "
+		SELECT 
+			COUNT(DISTINCT(GSS.g_uid)) AS ss_count, GSS.g_c_size
+		FROM 
+			{$goods_db}.goods_size_search_{$c1} GSS, {$goods_db}.goods A{$tmall_img_join_tb}{$ca_join_table}
+		WHERE GSS.g_uid=A.g_uid
+		{$tmall_img_join_and}
+		{$ca_join_and}
+		AND A.now_is_sale=1
+		AND A.isAvailable=2 
+		AND A.isSoldout=0
+		{$size_search_and_sl_uid}
+		{$ca_and_str}
+		{$not_in_site_code}
+		GROUP BY GSS.g_c_size ORDER BY GSS.g_c_size ASC
+	";
+	//echo $query_size."\r\n";
+	$result_sale_size = dbQuery($query_sale_size,$dbconn);
+	while($row_sale_size=mysql_fetch_assoc($result_sale_size))
+	{
+		$arr_sale_size_search_cache_ca2[$c1][$row_t['c_value']][] = $row_sale_size['g_c_size']."^|".$row_sale_size['ss_count'];
+	}
+	/************** 2dept sale-category cache end **************/
+}
+dbClose($dbconn);
+//echo("<pre>");print_r($arr_size_search_cache_ca2);echo("</pre>");
+/************** 2dept category cache start **************/
+$file_include = "";
+$arr_check_c1 = array();
+foreach($arr_size_search_cache_ca2 AS $c1_key=>$arr_c2)
+{
+	$file_include = "<?php\n\n\$ARR_SIZE_SEARH_C2_CACHE = array();\n";	
+	//echo $c1_key."<br />";
+	$arr_new_arr_value = array();
+	foreach($arr_c2 AS $c2_key=>$arr_value)
+	{
+		//echo $c2_key."<br />";
+		$arr_new_value = array();
+		foreach($arr_value AS $value)
+		{
+			//echo $value."<br />";
+			$arr_new_value[] = "'{$value}'";
+		}
+		$count_new_value = count($arr_new_value);
+		if($count_new_value > 0)
+		{
+			$new_value = implode(",",$arr_new_value);
+			$arr_new_arr_value[] = "\$ARR_SIZE_SEARH_C2_CACHE['$c2_key'] = array({$new_value});";
+		}
+	}
+	
+	$count_new_arr_value = count($arr_new_arr_value);
+	if($count_new_arr_value > 0)
+	{
+		$new_arr_value = implode("\n",$arr_new_arr_value);
+		//echo $new_arr_value."<br />";
+		$file_include = $file_include.$new_arr_value."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_size_search_cache_{$c1_key}.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+		
+		$arr_check_c1[] = $c1_key;
+	}
+}
+
+$file_include = "";
+$arr_d_parent_c_code = array('1000','1196','1167','1119','1319');
+foreach($arr_d_parent_c_code AS $parent_c_value)
+{
+	$file_include = "<?php\n\n\$ARR_SIZE_SEARH_C2_CACHE = array();\n";
+	
+	if(in_array($parent_c_value, $arr_check_c1))
+	{
+		continue;
+	}
+	else
+	{
+		$file_include = $file_include."\n?>";
+		$file_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_size_search_cache_{$parent_c_value}.inc";
+		write_file($file_loc,$file_include);
+		unset($file_include);
+		chown($file_loc, "daemon");
+		chgrp($file_loc, "daemon");
+		chmod($file_loc, 0775);
+	}
+}
+/************** 2dept category cache end **************/
+
+/************** 2dept sale-category cache start **************/
+$file_sale_include = "";
+$arr_sale_check_c1 = array();
+foreach($arr_sale_size_search_cache_ca2 AS $c1_key=>$arr_c2)
+{
+	$file_sale_include = "<?php\n\n\$ARR_SIZE_SEARH_C2_CACHE = array();\n";	
+	//echo $c1_key."<br />";
+	$arr_new_arr_value = array();
+	foreach($arr_c2 AS $c2_key=>$arr_value)
+	{
+		//echo $c2_key."<br />";
+		$arr_new_value = array();
+		foreach($arr_value AS $value)
+		{
+			//echo $value."<br />";
+			$arr_new_value[] = "'{$value}'";
+		}
+		$count_new_value = count($arr_new_value);
+		if($count_new_value > 0)
+		{
+			$new_value = implode(",",$arr_new_value);
+			$arr_new_arr_value[] = "\$ARR_SIZE_SEARH_C2_CACHE['$c2_key'] = array({$new_value});";
+		}
+	}
+	
+	$count_new_arr_value = count($arr_new_arr_value);
+	if($count_new_arr_value > 0)
+	{
+		$new_arr_value = implode("\n",$arr_new_arr_value);
+		//echo $new_arr_value."<br />";
+		$file_sale_include = $file_sale_include.$new_arr_value."\n?>";
+		$file_sale_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_sale_size_search_cache_{$c1_key}.inc";
+		write_file($file_sale_loc,$file_sale_include);
+		unset($file_sale_include);
+		chown($file_sale_loc, "daemon");
+		chgrp($file_sale_loc, "daemon");
+		chmod($file_sale_loc, 0775);
+		
+		$arr_sale_check_c1[] = $c1_key;
+	}
+}
+
+$file_sale_include = "";
+foreach($arr_d_parent_c_code AS $parent_c_value)
+{
+	$file_sale_include = "<?php\n\n\$ARR_SIZE_SEARH_C2_CACHE = array();\n";
+	
+	if(in_array($parent_c_value, $arr_check_c1))
+	{
+		continue;
+	}
+	else
+	{
+		$file_sale_include = $file_sale_include."\n?>";
+		$file_sale_loc = "/home/html/BUYFINE/www_v3.buyfine.net/files/etc/arr_sale_size_search_cache_{$parent_c_value}.inc";
+		write_file($file_sale_loc,$file_sale_include);
+		unset($file_sale_include);
+		chown($file_sale_loc, "daemon");
+		chgrp($file_sale_loc, "daemon");
+		chmod($file_sale_loc, 0775);
+	}
+}
+/************** 2dept sale-category cache end **************/
+
+unset($arr_size_search_cache_ca2);
+unset($arr_sale_size_search_cache_ca2);
+unset($arr_new_value);
+unset($arr_new_arr_value);
+unset($arr_d_parent_c_code);
+unset($arr_check_c1);
+unset($arr_sale_check_c1);
+
+if($IS_RSYNC_SIZE_SEARCH_CACHE_IP > 0)//$IS_RSYNC_SIZE_SEARCH_CACHE_IP assign COMM_FUNC.inc
+{
+	func_rsync_exec($ARR_RSYNC_SIZE_SEARCH_CACHE_IP, $ARR_RSYNC_SIZE_SEARCH_CACHE_SOURCE, $ARR_RSYNC_SIZE_SEARCH_CACHE_DESTINATION);
+}
+
+$end_time = time(); 
+$run_time = $end_time - $start_time; 
+echo ("Size Search - ".date("Y-m-d H:m:s")." = ".$run_time."\r\n");
+?>
